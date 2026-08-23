@@ -1,0 +1,10 @@
+[package]
+name = "neural-router-domain"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Shared order-book and signal types"
+
+[dependencies]
+serde.workspace = true

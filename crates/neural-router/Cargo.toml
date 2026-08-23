@@ -1,0 +1,18 @@
+[package]
+name = "neural-router"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "CLI entrypoints for collect, train, predict, execute, and backtest"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+dotenvy.workspace = true
+neural-router-config.workspace = true
+neural-router-data.workspace = true
+neural-router-execution.workspace = true
+neural-router-ml.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

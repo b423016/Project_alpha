@@ -1,0 +1,13 @@
+[package]
+name = "neural-router-ml"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "GNN-transformer model, constraints, train, and predict APIs"
+
+[dependencies]
+neural-router-config.workspace = true
+neural-router-domain.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

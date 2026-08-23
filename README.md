@@ -37,9 +37,27 @@ Neural Order Book Execution Router is an AI-powered trading system that:
 
 ## Architecture
 
+This is a Cargo workspace. Library crates own domain logic; the `neural-router` binary is a thin CLI.
+
+```text
+handlers (CLI) → services (ml / execution / market-data) → domain types → external I/O
+```
+
+Crate dependency direction:
+
+```text
+neural-router (bin)
+  → neural-router-data
+  → neural-router-ml
+  → neural-router-execution
+       ↘         ↘          ↙
+         neural-router-config
+         neural-router-domain
+```
+
 ### Key Data Flows
 
-- **Market Data Ingestion:** Real-time L2 data via WebSocket
+- **Market Data Ingestion:** Real-time L2 data via WebSocket (Polygon; not wired yet)
 - **Prediction Pipeline:** Order book → Feature extraction → Model inference
 - **Execution Loop:** Signal → Risk check → Order routing → Confirmation
 - **Monitoring:** Real-time metrics → Dashboard visualization
@@ -48,37 +66,26 @@ Neural Order Book Execution Router is an AI-powered trading system that:
 
 ## System Components
 
-### 1. Data Pipeline
+### 1. Data Pipeline (`crates/market-data`)
 - **Sources:** [Polygon.io](https://polygon.io/)
-- **Storage:** 
-  - DuckDB for analytics
-  - MongoDB Atlas for operations
+- **Storage:** DuckDB for analytics (planned)
 - **Processing:**
-  - Order book normalization
-  - Feature engineering (order imbalance, spread volatility)
-  - Data validation
+  - Order book validation
+  - Feature engineering (order imbalance)
+  - `L2Source` trait at the I/O boundary
 
-### 2. Machine Learning Core
-- **Model:**
-  - 3-layer Graph Convolutional Network (GCN)
-  - Transformer temporal encoder
-  - Physics-informed constraints
-- **Training:** Kaggle GPU notebooks
-- **Serving:** FastAPI prediction service
+### 2. Machine Learning Core (`crates/ml-core`)
+- **Model:** GCN + temporal transformer (weights not trained yet)
+- **Constraints:** spread conservation, probability unit interval
+- **Serving:** `predict` API behind the CLI
 
-### 3. Execution Engine
-- **Components:**
-  - Signal generator
-  - Risk manager (exposure & position limits)
-  - Order router (Alpaca API)
-- **Decision Logic:**
-  ```python
-  if spread_widening_prob > 0.7: 
-      execute_market_order('BUY', quantity=risk_adjusted_size)
-  ```
+### 3. Execution Engine (`crates/execution`)
+- **Broker:** Alpaca adapter (`Broker` trait). Paper by default. Fails closed without credentials.
+- **Risk:** 1% of equity per trade, 5% daily loss circuit breaker
+- **Router:** widen > 0.7 → buy; narrow > 0.7 → sell; else hold
 
 ### 4. Frontend Dashboard
-**Tech:** TypeScript, WebSockets, CSS
+**Tech:** TypeScript, WebSockets, CSS (unchanged)
 
 ### Visuals
 - **Order Book Heatmap**
@@ -90,30 +97,19 @@ Neural Order Book Execution Router is an AI-powered trading system that:
 ---
 
 ## Installation
+
 ### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- DuckDB
-- MongoDB Atlas account
+- Rust 1.85+ (`rustup`)
+- Node.js 18+ (frontend)
 - GitHub Student Pack (recommended)
 
 ### Setup
 ```bash
-# Clone repository
 git clone https://github.com/yourusername/neural-router.git
 cd neural-router
 
-# Create Python environment
-python -m venv .venv
-# Linux/Mac
-source .venv/bin/activate
-# Windows
-.venv\Scripts\activate
+cargo build --workspace
 
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Frontend setup
 cd frontend
 npm install
 npm run build
@@ -122,64 +118,56 @@ npm run build
 ---
 
 ## Configuration
-Create a `.env` file in the root directory:
+
+Copy `.env.example` to `.env`. Do not commit `.env`.
+
 ```ini
-POLYGON_API_KEY="your_polygon_api_key"
-ALPACA_API_KEY="your_alpaca_key"
-ALPACA_SECRET_KEY="your_alpaca_secret"
+POLYGON_API_KEY=your_polygon_api_key_here
+ALPACA_API_KEY=your_alpaca_key_here
+ALPACA_SECRET_KEY=your_alpaca_secret_here
 ALPACA_PAPER=true
-MONGO_URI="mongodb+srv://user:password@cluster.mongodb.net/db"
 PREDICTION_HORIZON=500
 ORDER_BOOK_LEVELS=10
 RISK_LIMIT_PER_TRADE=0.01
-```
-
-Update `config.py` with paths:
-```python
-DATA_DIR = "data/"
-MODEL_DIR = "ml_core/models/"
-LOG_DIR = "logs/"
+MAX_DAILY_LOSS=0.05
+SYMBOL=SPY
 ```
 
 ---
 
 ## Workflows
-### Data Collection
+
 ```bash
-python scripts/data_collector.py --symbol SPY --frequency 100ms
+cargo run -- collect --symbol SPY
+cargo run -- train --epochs 50 --batch-size 1024
+cargo run -- predict
+cargo run -- execute
+cargo run -- backtest --start 2024-01-01 --end 2024-03-01
 ```
 
-### Model Training
+Frontend:
+
 ```bash
-python ml_core/train.py --epochs 50 --batch_size 1024 --use_gpu
-```
-
-### Start System
-```bash
-# Terminal 1
-python ml_core/prediction_service.py
-
-# Terminal 2
-python execution_engine/main.py
-
-# Terminal 3
 cd frontend
 npm run dev
 ```
 
-### Backtesting
-```bash
-python scripts/backtest.py --start_date 2024-01-01 --end_date 2024-03-01
-```
+I/O adapters (Polygon ingest, GNN train/serve, Alpaca transport, historical replay) return `not implemented` until those layers are written. Domain, config, validation, risk, and routing already have unit tests.
 
 ---
 
 ## Testing & Validation
+
+```bash
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
 | Test Type      | Tools           | Frequency      |
 | -------------- | -------------- | ------------- |
-| Unit Tests     | pytest         | Pre-commit    |
+| Unit Tests     | cargo test     | Pre-commit    |
 | Integration    | Docker Compose | Weekly        |
-| Backtesting    | VectorBT       | Per model ver |
+| Backtesting    | `backtest` bin | Per model ver |
 | Paper Trading  | Alpaca Sandbox | Continuous    |
 
 **Key Metrics:**
@@ -191,15 +179,16 @@ python scripts/backtest.py --start_date 2024-01-01 --end_date 2024-03-01
 ---
 
 ## Deployment
+
 ### Infrastructure
 - DigitalOcean droplet (~$40/mo)
-- MongoDB Atlas (M0 free tier)
 
 ### Production Setup
 ```bash
-pm2 start ml_core/prediction_service.py --name prediction
-pm2 start execution_engine/main.py --name execution
+cargo build --release -p neural-router
 ```
+
+Run the release binary with env vars injected at process start. Do not bake secrets into the binary.
 
 ### Frontend Deployment
 ```bash
@@ -207,64 +196,35 @@ cd frontend
 vercel --prod
 ```
 
-### Monitoring Tools
-- Datadog for metrics
-- Sentry for error logging
-
 ---
 
 ## Roadmap
-### Phase 1: MVP (Weeks 1–8)
+### Phase 1: MVP
 - Data ingestion pipeline
 - GNN prototype
 - Execution logic
 - Paper trading
 - Dashboard v1
 
-### Phase 2: Scaling (Weeks 9–16)
+### Phase 2: Scaling
 - Multi-asset support (e.g., QQQ, BTC)
 - RL-based decision module
 - Enhanced risk checks
-- Compliance-ready reports
-- Tier 4 client onboarding
 
-### Phase 3: Production (Months 5–8)
+### Phase 3: Production
 - FIX protocol support
-- Tier 1–2 integration
-- Regulatory compliance (e.g., MiFID II)
+- Regulatory compliance
 - ASIC/FPGA acceleration
 
 ---
 
 ## Contributing
-1. **Fork** the repo
-2. **Create a feature branch:**
-   ```bash
-   git checkout -b feature/your-feature
-   ```
-3. **Commit with semantic messages:**
-   ```bash
-   git commit -m "feat: add new prediction module"
-   ```
-4. **Push and open a PR** with:
-   - Description of change
-   - Validation results
-   - Expected impact
+1. Fork the repo
+2. Create a feature branch
+3. Run `cargo test --workspace` and `cargo clippy --workspace`
+4. Open a PR with description, validation, and expected impact
 
 ---
 
 ## License
 This project is licensed under the Apache License 2.0.
-
-**Contact:** For enterprise or institutional inquiries, please reach out via GitHub or submit an issue.
-
----
-
-*Let me know if you'd like a version split into multiple markdown files (for a docs site) or auto-generated from code/docstrings.*
-
-
-
-
-
-
-
