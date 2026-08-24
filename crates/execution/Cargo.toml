@@ -9,5 +9,8 @@ description = "Broker adapter, order routing, and risk controls"
 [dependencies]
 neural-router-config.workspace = true
 neural-router-domain.workspace = true
+blake3.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

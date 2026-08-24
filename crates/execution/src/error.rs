@@ -8,4 +8,6 @@ pub enum ExecutionError {
     MissingCredentials,
     #[error("risk rejected: {0}")]
     Risk(&'static str),
+    #[error("live trading requires ALPACA_PAPER=false and ALLOW_LIVE=1")]
+    NotPaper,
 }

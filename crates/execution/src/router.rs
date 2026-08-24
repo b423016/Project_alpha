@@ -1,6 +1,7 @@
 use neural_router_domain::{Prediction, Side};
 
-use crate::{Broker, ExecutionError, RiskManager, RiskState};
+use crate::risk::{RiskManager, RiskState};
+use crate::{Broker, ExecutionError};
 
 const SIGNAL_THRESHOLD: f64 = 0.7;
 
