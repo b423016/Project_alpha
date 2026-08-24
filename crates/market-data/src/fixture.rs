@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::snapshot::{validate_chain, ChainSnapshot, RawChain};
 use crate::DataError;
+use crate::snapshot::{ChainSnapshot, RawChain, validate_chain};
 
 pub fn fixture_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/spy_chain.json")
@@ -15,15 +15,14 @@ pub fn load_fixture() -> Result<ChainSnapshot, DataError> {
 
 /// Drive validate/ring from fixture bytes (shipped path).
 pub fn load_fixture_bytes(bytes: &[u8]) -> Result<ChainSnapshot, DataError> {
-    let raw: RawChain =
-        serde_json::from_slice(bytes).map_err(|e| DataError::Io(e.to_string()))?;
+    let raw: RawChain = serde_json::from_slice(bytes).map_err(|e| DataError::Io(e.to_string()))?;
     validate_chain(raw, 0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::snapshot::{current_or_stale, SnapshotRing};
+    use crate::snapshot::{SnapshotRing, current_or_stale};
 
     #[test]
     fn fixture_loads_delayed_spy_chain() {
@@ -62,6 +61,9 @@ mod tests {
         let mut ring = SnapshotRing::new();
         let id = ring.push(snap).unwrap();
         assert_eq!(id.as_str(), "snap-fix01");
-        assert_eq!(ring.current().unwrap().stamps.snapshot_id.as_str(), "snap-fix01");
+        assert_eq!(
+            ring.current().unwrap().stamps.snapshot_id.as_str(),
+            "snap-fix01"
+        );
     }
 }

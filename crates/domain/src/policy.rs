@@ -40,7 +40,7 @@ impl Policy {
             dte_max: 60,
             delta_min: -0.50,
             delta_max: -0.20,
-            max_premium_cents: 1_000_00,
+            max_premium_cents: 100_000,
             lambda_svi: 1.0,
             lambda_pca: 1.0,
             lambda_eff: 1.0,

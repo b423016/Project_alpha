@@ -176,11 +176,13 @@ mod tests {
 
     #[test]
     fn live_without_allow_live_is_not_paper() {
-        let mut s = Settings::default();
-        s.alpaca_api_key = Some("k".into());
-        s.alpaca_secret_key = Some("s".into());
-        s.alpaca_paper = false;
-        s.allow_live = false;
+        let s = Settings {
+            alpaca_api_key: Some("k".into()),
+            alpaca_secret_key: Some("s".into()),
+            alpaca_paper: false,
+            allow_live: false,
+            ..Settings::default()
+        };
         assert!(matches!(
             AlpacaOverlay::from_settings(&s),
             Err(ExecutionError::NotPaper)

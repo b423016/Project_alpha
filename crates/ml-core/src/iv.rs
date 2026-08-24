@@ -5,7 +5,6 @@ use neural_router_domain::Greeks;
 use crate::MlError;
 
 const SQRT_2PI: f64 = 2.506_628_238_584_699;
-const INV_SQRT2: f64 = 0.707_106_781_186_547_6;
 
 fn erf(x: f64) -> f64 {
     // Abramowitz & Stegun 7.1.26
@@ -21,7 +20,7 @@ fn erf(x: f64) -> f64 {
 }
 
 fn norm_cdf(x: f64) -> f64 {
-    0.5 * (1.0 + erf(x * INV_SQRT2))
+    0.5 * (1.0 + erf(x * std::f64::consts::FRAC_1_SQRT_2))
 }
 
 fn norm_pdf(x: f64) -> f64 {
@@ -64,14 +63,7 @@ pub fn put_price(s: f64, k: f64, t: f64, r: f64, q: f64, sigma: f64) -> Result<f
     Ok(k * df_r * norm_cdf(-d2) - s * df_q * norm_cdf(-d1))
 }
 
-pub fn implied_vol_put(
-    s: f64,
-    k: f64,
-    t: f64,
-    r: f64,
-    q: f64,
-    mid: f64,
-) -> Result<f64, MlError> {
+pub fn implied_vol_put(s: f64, k: f64, t: f64, r: f64, q: f64, mid: f64) -> Result<f64, MlError> {
     if mid <= 0.0 {
         return Err(MlError::Constraint("non-positive mid"));
     }

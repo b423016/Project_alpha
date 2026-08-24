@@ -1,8 +1,6 @@
 use std::collections::VecDeque;
 
-use neural_router_domain::{
-    OptionContract, OptionRight, PolicyId, SnapshotId, Stamps,
-};
+use neural_router_domain::{OptionContract, OptionRight, PolicyId, SnapshotId, Stamps};
 use serde::{Deserialize, Serialize};
 
 use crate::DataError;
@@ -119,12 +117,14 @@ impl SnapshotRing {
     }
 }
 
-pub fn current_or_stale<'a>(
-    ring: &'a SnapshotRing,
+pub fn current_or_stale(
+    ring: &SnapshotRing,
     now_ms: i64,
     max_age_ms: i64,
-) -> Result<&'a ChainSnapshot, DataError> {
-    let snap = ring.current().ok_or(DataError::Stale { age_ms: i64::MAX })?;
+) -> Result<&ChainSnapshot, DataError> {
+    let snap = ring
+        .current()
+        .ok_or(DataError::Stale { age_ms: i64::MAX })?;
     let age = snap.data_age_ms(now_ms);
     if age > max_age_ms {
         return Err(DataError::Stale { age_ms: age });

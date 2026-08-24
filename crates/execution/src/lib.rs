@@ -10,14 +10,12 @@ mod risk;
 mod router;
 
 pub use alpaca::{AlpacaClient, Broker};
-pub use audit::{
-    append_file, submit_after_audit, AuditEvent, DecideHist, MemoryAudit,
-};
+pub use audit::{AuditEvent, DecideHist, MemoryAudit, append_file, submit_after_audit};
 pub use blotter::{Blotter, BlotterRow, OrderState};
 pub use error::ExecutionError;
-pub use gate::{client_order_id, gate, kernel_qty};
+pub use gate::{GateLimits, client_order_id, gate, kernel_qty};
 pub use overlay_broker::{
-    recon_position, AlpacaOverlay, MockPaperBroker, OverlayBroker, SubmitAck,
+    AlpacaOverlay, MockPaperBroker, OverlayBroker, SubmitAck, recon_position,
 };
 pub use risk::{RiskDecision, RiskManager};
-pub use router::{decide, route, NewOrder, RouteDecision};
+pub use router::{NewOrder, RouteDecision, decide, route};

@@ -14,7 +14,7 @@ mod stamps;
 mod ticket;
 mod top20;
 
-pub use greeks::{require_finite, Greeks};
+pub use greeks::{Greeks, require_finite};
 pub use ids::{PolicyId, SnapshotId};
 pub use occ::OccSymbol;
 pub use option_contract::{OptionContract, OptionRight};

@@ -38,7 +38,7 @@ impl PolicyId {
 
 fn parse_id(field: &'static str, raw: String) -> Result<String, Reject> {
     let n = raw.len();
-    if n < ID_MIN || n > ID_MAX {
+    if !(ID_MIN..=ID_MAX).contains(&n) {
         return Err(Reject::new(
             RejectCode::Parse,
             field,

@@ -6,6 +6,4 @@ mod validate;
 
 pub use claude::{ClaudeClient, Llm, LlmReq, MockLlm};
 pub use error::PolicyError;
-pub use validate::{
-    quant_with_one_retry, validate_policy, validate_ticket, LastGood, LiveRefs,
-};
+pub use validate::{LastGood, LiveRefs, quant_with_one_retry, validate_policy, validate_ticket};

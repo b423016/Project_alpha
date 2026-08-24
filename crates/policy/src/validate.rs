@@ -1,6 +1,4 @@
-use neural_router_domain::{
-    Policy, Reject, RejectCode, RiskState, TicketProposal, Top20,
-};
+use neural_router_domain::{Policy, Reject, RejectCode, RiskState, TicketProposal, Top20};
 
 #[derive(Clone, Copy)]
 pub struct LiveRefs<'a> {
@@ -12,7 +10,12 @@ pub struct LiveRefs<'a> {
 }
 
 fn map_serde(err: serde_json::Error) -> Reject {
-    Reject::new(RejectCode::Parse, "json", err.to_string(), "parse/unknown field/type")
+    Reject::new(
+        RejectCode::Parse,
+        "json",
+        err.to_string(),
+        "parse/unknown field/type",
+    )
 }
 
 pub fn validate_policy(raw: &str, risk: &RiskState) -> Result<Policy, Reject> {
@@ -173,20 +176,20 @@ mod tests {
 
     #[test]
     fn golden_policy_ok() {
-        let risk = RiskState::paper_book(10_000_000_00);
+        let risk = RiskState::paper_book(1_000_000_000);
         validate_policy(&read("policy_ok.json"), &risk).unwrap();
     }
 
     #[test]
     fn golden_policy_extra_field() {
-        let risk = RiskState::paper_book(10_000_000_00);
+        let risk = RiskState::paper_book(1_000_000_000);
         let err = validate_policy(&read("policy_extra_field.json"), &risk).unwrap_err();
         assert_eq!(err.code, RejectCode::Parse);
     }
 
     #[test]
     fn golden_policy_nan_lambda() {
-        let risk = RiskState::paper_book(10_000_000_00);
+        let risk = RiskState::paper_book(1_000_000_000);
         let err = validate_policy(&read("policy_nan_lambda.json"), &risk).unwrap_err();
         assert_eq!(err.code, RejectCode::Lambda);
     }
@@ -195,8 +198,9 @@ mod tests {
     fn golden_ticket_sell() {
         let top = live_top();
         let policy = Policy::file_default();
-        let risk = RiskState::paper_book(10_000_000_00);
-        let err = validate_ticket(&read("ticket_sell.json"), refs(&top, &policy, &risk)).unwrap_err();
+        let risk = RiskState::paper_book(1_000_000_000);
+        let err =
+            validate_ticket(&read("ticket_sell.json"), refs(&top, &policy, &risk)).unwrap_err();
         assert_eq!(err.code, RejectCode::Parse);
     }
 
@@ -204,10 +208,12 @@ mod tests {
     fn golden_ticket_not_in_top20() {
         let top = live_top();
         let policy = Policy::file_default();
-        let risk = RiskState::paper_book(10_000_000_00);
-        let err =
-            validate_ticket(&read("ticket_not_in_top20.json"), refs(&top, &policy, &risk))
-                .unwrap_err();
+        let risk = RiskState::paper_book(1_000_000_000);
+        let err = validate_ticket(
+            &read("ticket_not_in_top20.json"),
+            refs(&top, &policy, &risk),
+        )
+        .unwrap_err();
         assert_eq!(err.code, RejectCode::NotInTop20);
     }
 
@@ -215,10 +221,12 @@ mod tests {
     fn golden_ticket_stale_snapshot() {
         let top = live_top();
         let policy = Policy::file_default();
-        let risk = RiskState::paper_book(10_000_000_00);
-        let err =
-            validate_ticket(&read("ticket_stale_snapshot.json"), refs(&top, &policy, &risk))
-                .unwrap_err();
+        let risk = RiskState::paper_book(1_000_000_000);
+        let err = validate_ticket(
+            &read("ticket_stale_snapshot.json"),
+            refs(&top, &policy, &risk),
+        )
+        .unwrap_err();
         assert_eq!(err.code, RejectCode::StaleSnap);
     }
 
@@ -226,10 +234,9 @@ mod tests {
     fn golden_ticket_qty_too_big() {
         let top = live_top();
         let policy = Policy::file_default();
-        let risk = RiskState::paper_book(10_000_000_00);
-        let err =
-            validate_ticket(&read("ticket_qty_too_big.json"), refs(&top, &policy, &risk))
-                .unwrap_err();
+        let risk = RiskState::paper_book(1_000_000_000);
+        let err = validate_ticket(&read("ticket_qty_too_big.json"), refs(&top, &policy, &risk))
+            .unwrap_err();
         assert_eq!(err.code, RejectCode::QtyRecompute);
     }
 
@@ -237,7 +244,7 @@ mod tests {
     fn pass_k_same_bytes() {
         let top = live_top();
         let policy = Policy::file_default();
-        let risk = RiskState::paper_book(10_000_000_00);
+        let risk = RiskState::paper_book(1_000_000_000);
         let raw = read("ticket_not_in_top20.json");
         let a = validate_ticket(&raw, refs(&top, &policy, &risk)).unwrap_err();
         let b = validate_ticket(&raw, refs(&top, &policy, &risk)).unwrap_err();
@@ -250,8 +257,11 @@ mod tests {
     fn strategist_fail_leaves_last_good() {
         let mut lg = LastGood::file_default();
         let before = lg.policy.clone();
-        let risk = RiskState::paper_book(10_000_000_00);
-        assert!(lg.try_accept(&read("policy_extra_field.json"), &risk).is_err());
+        let risk = RiskState::paper_book(1_000_000_000);
+        assert!(
+            lg.try_accept(&read("policy_extra_field.json"), &risk)
+                .is_err()
+        );
         assert_eq!(lg.policy, before);
     }
 
@@ -259,14 +269,17 @@ mod tests {
     fn quant_second_fail_no_ticket() {
         let top = live_top();
         let policy = Policy::file_default();
-        let risk = RiskState::paper_book(10_000_000_00);
+        let risk = RiskState::paper_book(1_000_000_000);
         let err = quant_with_one_retry(
             &read("ticket_sell.json"),
             Some(&read("ticket_qty_too_big.json")),
             refs(&top, &policy, &risk),
         )
         .unwrap_err();
-        assert!(matches!(err.code, RejectCode::Parse | RejectCode::QtyRecompute));
+        assert!(matches!(
+            err.code,
+            RejectCode::Parse | RejectCode::QtyRecompute
+        ));
     }
 
     #[test]

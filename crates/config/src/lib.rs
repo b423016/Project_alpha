@@ -236,11 +236,17 @@ mod tests {
 
     #[test]
     fn live_requires_double_flag() {
-        let mut s = Settings::default();
-        s.alpaca_paper = false;
-        assert!(!s.live_trading_allowed());
-        s.allow_live = true;
-        assert!(s.live_trading_allowed());
+        let paper_off = Settings {
+            alpaca_paper: false,
+            ..Settings::default()
+        };
+        assert!(!paper_off.live_trading_allowed());
+        let live = Settings {
+            alpaca_paper: false,
+            allow_live: true,
+            ..Settings::default()
+        };
+        assert!(live.live_trading_allowed());
     }
 
     #[test]

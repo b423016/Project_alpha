@@ -41,7 +41,8 @@ fn is_occ(s: &str) -> bool {
     if root.is_empty() || root.len() > 6 {
         return false;
     }
-    root.iter().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+    root.iter()
+        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
         && yymmdd.iter().all(|c| c.is_ascii_digit())
         && (right == b'C' || right == b'P')
         && strike.len() == 8

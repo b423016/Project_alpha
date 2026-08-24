@@ -65,6 +65,13 @@ mod tests {
         let m = MockLlm {
             payload: "{}".into(),
         };
-        assert_eq!(m.complete(&LlmReq { prompt_version: "v1", user: "x".into() }).unwrap(), "{}");
+        assert_eq!(
+            m.complete(&LlmReq {
+                prompt_version: "v1",
+                user: "x".into()
+            })
+            .unwrap(),
+            "{}"
+        );
     }
 }

@@ -1,8 +1,8 @@
 use neural_router_config::Settings;
 use neural_router_domain::OrderBookSnapshot;
 
-use crate::snapshot::RawChain;
 use crate::DataError;
+use crate::snapshot::RawChain;
 
 /// Boundary for an L2 feed. Polygon (or any other venue) implements this.
 pub trait L2Source {

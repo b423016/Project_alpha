@@ -20,18 +20,21 @@ pub fn kernel_qty(equity_cents: i64, mid_cents: i64, risk_frac: f64) -> u32 {
     (cap / mid_cents).clamp(0, 1000) as u32
 }
 
+pub struct GateLimits {
+    pub rth: bool,
+    pub max_slippage: f64,
+    pub risk_frac: f64,
+    pub max_daily_loss: f64,
+}
+
 pub fn gate(
     proposal: TicketProposal,
     top20: &Top20,
     policy: &Policy,
     risk: &RiskState,
-    _now_ms: i64,
-    rth: bool,
-    max_slippage: f64,
-    risk_frac: f64,
-    max_daily_loss: f64,
+    limits: GateLimits,
 ) -> Result<NewOrder, Reject> {
-    if !rth {
+    if !limits.rth {
         return Err(Reject::new(RejectCode::Rth, "rth", "closed", "outside RTH"));
     }
     if risk.breaker {
@@ -50,7 +53,7 @@ pub fn gate(
             "non-positive equity",
         ));
     }
-    let loss_lim = (risk.equity_cents as f64 * max_daily_loss) as i64;
+    let loss_lim = (risk.equity_cents as f64 * limits.max_daily_loss) as i64;
     if risk.daily_pnl_cents <= -loss_lim {
         return Err(Reject::new(
             RejectCode::DailyLoss,
@@ -84,7 +87,7 @@ pub fn gate(
         )
     })?;
     let mid_cents = row.contract.mid_cents().unwrap_or(proposal.limit_cents);
-    let kqty = kernel_qty(risk.equity_cents, mid_cents, risk_frac);
+    let kqty = kernel_qty(risk.equity_cents, mid_cents, limits.risk_frac);
     if proposal.qty > kqty {
         return Err(Reject::new(
             RejectCode::QtyRecompute,
@@ -94,7 +97,7 @@ pub fn gate(
         ));
     }
     let premium = i64::from(proposal.qty) * proposal.limit_cents;
-    let cap = (risk.equity_cents as f64 * risk_frac) as i64;
+    let cap = (risk.equity_cents as f64 * limits.risk_frac) as i64;
     let cap = cap.min(policy.max_premium_cents);
     if premium > cap {
         return Err(Reject::new(
@@ -104,7 +107,7 @@ pub fn gate(
             "premium over 1% / policy cap",
         ));
     }
-    let max_limit = ((mid_cents as f64) * (1.0 + max_slippage)).round() as i64;
+    let max_limit = ((mid_cents as f64) * (1.0 + limits.max_slippage)).round() as i64;
     if proposal.limit_cents > max_limit {
         return Err(Reject::new(
             RejectCode::LimitAway,
@@ -169,6 +172,15 @@ mod tests {
         }
     }
 
+    fn limits(rth: bool) -> GateLimits {
+        GateLimits {
+            rth,
+            max_slippage: 0.03,
+            risk_frac: 0.01,
+            max_daily_loss: 0.05,
+        }
+    }
+
     fn proposal(qty: u32) -> TicketProposal {
         TicketProposal {
             snapshot_id: SnapshotId::new("snap-0001").unwrap(),
@@ -188,12 +200,8 @@ mod tests {
             proposal(1),
             &top(),
             &Policy::file_default(),
-            &RiskState::paper_book(1_000_000_00),
-            0,
-            true,
-            0.03,
-            0.01,
-            0.05,
+            &RiskState::paper_book(100_000_000),
+            limits(true),
         )
         .unwrap();
         assert_eq!(order.qty, 1);
@@ -212,12 +220,8 @@ mod tests {
             proposal(1000),
             &top(),
             &Policy::file_default(),
-            &RiskState::paper_book(10_000_00),
-            0,
-            true,
-            0.03,
-            0.01,
-            0.05,
+            &RiskState::paper_book(1_000_000),
+            limits(true),
         )
         .unwrap_err();
         assert_eq!(err.code, RejectCode::QtyRecompute);
@@ -225,18 +229,14 @@ mod tests {
 
     #[test]
     fn daily_loss_trips() {
-        let mut risk = RiskState::paper_book(100_000_00);
-        risk.daily_pnl_cents = -5_000_00;
+        let mut risk = RiskState::paper_book(10_000_000);
+        risk.daily_pnl_cents = -500_000;
         let err = gate(
             proposal(1),
             &top(),
             &Policy::file_default(),
             &risk,
-            0,
-            true,
-            0.03,
-            0.01,
-            0.05,
+            limits(true),
         )
         .unwrap_err();
         assert_eq!(err.code, RejectCode::DailyLoss);
@@ -250,12 +250,8 @@ mod tests {
             p,
             &top(),
             &Policy::file_default(),
-            &RiskState::paper_book(1_000_000_00),
-            0,
-            true,
-            0.03,
-            0.01,
-            0.05,
+            &RiskState::paper_book(100_000_000),
+            limits(true),
         )
         .unwrap_err();
         assert_eq!(err.code, RejectCode::NotInTop20);
@@ -269,12 +265,8 @@ mod tests {
             p,
             &top(),
             &Policy::file_default(),
-            &RiskState::paper_book(1_000_000_00),
-            0,
-            true,
-            0.03,
-            0.01,
-            0.05,
+            &RiskState::paper_book(100_000_000),
+            limits(true),
         )
         .unwrap_err();
         assert_eq!(err.code, RejectCode::StaleSnap);
@@ -286,12 +278,8 @@ mod tests {
             proposal(1),
             &top(),
             &Policy::file_default(),
-            &RiskState::paper_book(1_000_000_00),
-            0,
-            false,
-            0.03,
-            0.01,
-            0.05,
+            &RiskState::paper_book(100_000_000),
+            limits(false),
         )
         .unwrap_err();
         assert_eq!(err.code, RejectCode::Rth);
@@ -299,7 +287,7 @@ mod tests {
 
     #[test]
     fn three_rejects_trip_breaker() {
-        let mut risk = RiskState::paper_book(1_000_000_00);
+        let mut risk = RiskState::paper_book(100_000_000);
         for _ in 0..3 {
             risk.bump_reject(3);
         }
@@ -309,11 +297,7 @@ mod tests {
             &top(),
             &Policy::file_default(),
             &risk,
-            0,
-            true,
-            0.03,
-            0.01,
-            0.05,
+            limits(true),
         )
         .unwrap_err();
         assert_eq!(err.code, RejectCode::Breaker);

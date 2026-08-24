@@ -23,7 +23,9 @@ pub fn funnel(chain: &ChainSnapshot, policy: &Policy) -> Top20 {
             continue;
         }
         let Some(mid) = c.mid() else { continue };
-        let Some(spread) = c.spread_pct() else { continue };
+        let Some(spread) = c.spread_pct() else {
+            continue;
+        };
         if spread > MAX_SPREAD {
             continue;
         }
@@ -93,7 +95,7 @@ mod tests {
     use neural_router_domain::Policy;
 
     use super::*;
-    use crate::band::{band_status, dollar_delta_stock, BandStatus};
+    use crate::band::{BandStatus, band_status, dollar_delta_stock};
 
     #[test]
     fn fixture_funnel_has_puts_excludes_short_dte() {
@@ -101,9 +103,17 @@ mod tests {
         let policy = Policy::file_default();
         let top = funnel(&chain, &policy);
         assert!(!top.rows.is_empty(), "expected at least one put in top-20");
-        assert!(top.rows.iter().any(|r| r.contract.right == OptionRight::Put));
+        assert!(
+            top.rows
+                .iter()
+                .any(|r| r.contract.right == OptionRight::Put)
+        );
         assert!(top.rows.iter().all(|r| r.contract.dte >= 7));
-        assert!(top.rows.iter().all(|r| r.contract.dte >= 30 && r.contract.dte <= 60));
+        assert!(
+            top.rows
+                .iter()
+                .all(|r| r.contract.dte >= 30 && r.contract.dte <= 60)
+        );
         assert!(top.rows.len() <= 20);
         assert_eq!(top.snapshot_id.as_str(), chain.stamps.snapshot_id.as_str());
         let pick = argmax_utility(&top, 1).unwrap();
@@ -127,6 +137,9 @@ mod tests {
         let chain = load_fixture().unwrap();
         let policy = Policy::file_default();
         let (_top, ms) = decide_cpu_ms(&chain, &policy);
-        assert!(ms < 5_000, "fixture funnel should be in-process, got {ms}ms");
+        assert!(
+            ms < 5_000,
+            "fixture funnel should be in-process, got {ms}ms"
+        );
     }
 }
