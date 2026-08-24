@@ -1,0 +1,10 @@
+{
+  "snapshot_id": "snap-0001",
+  "policy_id": "file-default-policy",
+  "occ_symbol": "SPY260417P00500000",
+  "side": "SELL",
+  "qty": 1,
+  "limit_cents": 810,
+  "tif": "IOC",
+  "why": "x"
+}

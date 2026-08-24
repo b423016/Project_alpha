@@ -490,6 +490,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "neural-router-policy"
+version = "0.1.0"
+dependencies = [
+ "neural-router-config",
+ "neural-router-domain",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

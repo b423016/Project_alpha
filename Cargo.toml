@@ -6,6 +6,7 @@ members = [
     "crates/market-data",
     "crates/ml-core",
     "crates/execution",
+    "crates/policy",
     "crates/neural-router",
 ]
 default-members = ["crates/neural-router"]
@@ -22,6 +23,7 @@ neural-router-domain = { path = "crates/domain" }
 neural-router-data = { path = "crates/market-data" }
 neural-router-ml = { path = "crates/ml-core" }
 neural-router-execution = { path = "crates/execution" }
+neural-router-policy = { path = "crates/policy" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 dotenvy = "0.15"
