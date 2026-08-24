@@ -8,9 +8,11 @@ mod order_book;
 mod policy;
 mod prediction;
 mod reject;
+mod risk_state;
 mod side;
 mod stamps;
 mod ticket;
+mod top20;
 
 pub use greeks::{require_finite, Greeks};
 pub use ids::{PolicyId, SnapshotId};
@@ -20,9 +22,11 @@ pub use order_book::{OrderBookSnapshot, PriceLevel};
 pub use policy::{Policy, Regime};
 pub use prediction::Prediction;
 pub use reject::{Reject, RejectCode};
+pub use risk_state::RiskState;
 pub use side::Side;
 pub use stamps::Stamps;
 pub use ticket::{NewOrder, TicketProposal, TicketSide, TimeInForce};
+pub use top20::{Enriched, Top20};
 
 #[cfg(test)]
 mod tests {

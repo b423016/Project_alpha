@@ -8,6 +8,14 @@ description = "GNN-transformer model, constraints, train, and predict APIs"
 
 [dependencies]
 neural-router-config.workspace = true
+neural-router-data.workspace = true
 neural-router-domain.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "funnel"
+harness = false
