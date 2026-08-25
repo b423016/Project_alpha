@@ -2,14 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Neural Router — overlay terminal</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="vendor/terminal.min.css" />
+  <link rel="stylesheet" href="theme.css" />
 </head>
-<body>
+<body class="terminal">
   <header>
     <strong>NR overlay</strong>
     <span id="badge" class="badge">DELAYED</span>
-    <span id="nav">NAV —</span>
+    <span id="status"></span>
     <button id="kill" type="button">kill</button>
     <nav>
       <a href="#overview">1 Overview</a>
@@ -20,18 +22,47 @@
       <a href="#settings">6 Settings (stub)</a>
     </nav>
   </header>
+
   <section id="overview">
     <h1>Overview</h1>
-    <pre id="overview-body">loading…</pre>
+    <div class="stats">
+      <span class="stat"><span class="k">snapshot</span><span class="v" id="ov-snapshot">—</span></span>
+      <span class="stat"><span class="k">SPY</span><span class="v" id="ov-under-price">—</span></span>
+      <span class="stat"><span class="k">contracts</span><span class="v" id="ov-n-contracts">—</span></span>
+      <span class="stat"><span class="k">feed</span><span class="v" id="ov-feed">—</span></span>
+      <span class="stat"><span class="k">kernel</span><span class="v" id="ov-killed">—</span></span>
+    </div>
+    <p>Top of book from the last validated snapshot. Data is delayed and labeled as such.</p>
   </section>
+
   <section id="chain">
     <h1>Chain</h1>
-    <pre id="chain-body">loading…</pre>
+    <p>Funnel top-20 by utility (λ·|Δ|/mid). All rows are SPY puts.</p>
+    <table>
+      <thead>
+        <tr><th>OCC</th><th>exp</th><th>dte</th><th>strike</th><th>Δ</th><th>IV</th><th>mid</th><th>util</th><th>oi</th></tr>
+      </thead>
+      <tbody id="chain-body"><tr><td colspan="9">loading…</td></tr></tbody>
+    </table>
   </section>
+
   <section id="blotter">
     <h1>Blotter</h1>
-    <pre id="blotter-body">loading…</pre>
+    <table>
+      <thead>
+        <tr><th>key</th><th>rows</th><th>killed</th></tr>
+      </thead>
+      <tbody id="blotter-body"><tr><td colspan="3">loading…</td></tr></tbody>
+    </table>
   </section>
-  <script src="app.ts"></script>
+
+  <section id="surface"><h1>Surface</h1><p>Stub — IV surface arrives after bits 1–8 (docs/execution.md non-goals).</p></section>
+  <section id="agents"><h1>Agents</h1><p>Stub — firm-graph seats land in a later spiral (docs/plan.md §13).</p></section>
+  <section id="settings"><h1>Settings</h1><p>Stub — config surface lands with the settings bit.</p></section>
+
+  <footer>
+    paper · DELAYED feed · kernel p99 ≤ 50 ms excludes broker RTT — see docs/hld.md
+  </footer>
+  <script src="app.js"></script>
 </body>
 </html>

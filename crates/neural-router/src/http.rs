@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use axum::Router;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode, header};
-use axum::response::{IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use neural_router_data::{ChainSnapshot, load_fixture};
 use neural_router_domain::{Policy, Top20};
@@ -168,8 +168,45 @@ async fn kill(State(state): State<AppState>, headers: HeaderMap) -> Result<Statu
     Ok(StatusCode::NO_CONTENT)
 }
 
+// UI assets are embedded so the binary is self-contained; no filesystem
+// serving means no path traversal surface.
+const INDEX_HTML: &str = include_str!("../../../frontend/index.html");
+const APP_JS: &str = include_str!("../../../frontend/app.js");
+const THEME_CSS: &str = include_str!("../../../frontend/theme.css");
+const TERMINAL_CSS: &str = include_str!("../../../frontend/vendor/terminal.min.css");
+
+async fn index() -> Html<&'static str> {
+    Html(INDEX_HTML)
+}
+
+async fn app_js() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        APP_JS,
+    )
+}
+
+async fn theme_css() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        THEME_CSS,
+    )
+}
+
+async fn terminal_css() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        TERMINAL_CSS,
+    )
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .route("/", get(index))
+        .route("/index.html", get(index))
+        .route("/app.js", get(app_js))
+        .route("/theme.css", get(theme_css))
+        .route("/vendor/terminal.min.css", get(terminal_css))
         .route("/api/snapshot", get(snapshot))
         .route("/api/top20", get(top20))
         .route("/api/blotter", get(blotter))
@@ -249,6 +286,26 @@ mod tests {
         let bytes = res.into_body().collect().await.unwrap().to_bytes();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("nr_decide_ms"));
+    }
+
+    #[tokio::test]
+    async fn ui_assets_served_with_content_types() {
+        let app = router(AppState::from_fixture());
+        for (uri, want) in [
+            ("/", "text/html"),
+            ("/app.js", "text/javascript"),
+            ("/theme.css", "text/css"),
+            ("/vendor/terminal.min.css", "text/css"),
+        ] {
+            let res = app
+                .clone()
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(res.status(), StatusCode::OK, "GET {uri}");
+            let ct = res.headers().get(header::CONTENT_TYPE).unwrap();
+            assert!(ct.to_str().unwrap().starts_with(want), "{uri} ct={ct:?}");
+        }
     }
 
     #[tokio::test]

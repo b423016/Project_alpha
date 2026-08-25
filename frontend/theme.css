@@ -1,0 +1,107 @@
+/* Dark phosphor theme: overrides terminal.css custom properties only.
+   The framework owns all component styling; this file is theming + layout. */
+:root {
+  --background-color: #0b0f0c;
+  --font-color: #b8ffc2;
+  --invert-font-color: #0b0f0c;
+  --primary-color: #57ff7a;
+  --secondary-color: #4e9e63;
+  --error-color: #ff6b6b;
+  --progress-bar-fill: #57ff7a;
+  --code-bg-color: #10160f;
+  --block-background-color: #0e140f;
+}
+
+body {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0 1rem 3rem;
+}
+
+header {
+  border-bottom: 1px dashed var(--secondary-color);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+nav a {
+  margin-right: 0.75rem;
+}
+
+#kill {
+  float: right;
+}
+
+.badge {
+  border: 1px solid var(--secondary-color);
+  padding: 0 0.35rem;
+  margin-left: 0.75rem;
+  font-size: 0.8em;
+  vertical-align: middle;
+}
+
+.badge-killed {
+  color: var(--error-color);
+  border-color: var(--error-color);
+}
+
+#status {
+  margin-left: 0.75rem;
+  color: var(--secondary-color);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.5rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.stat {
+  border: 1px solid var(--secondary-color);
+  padding: 0.35rem 0.6rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.stat .k {
+  color: var(--secondary-color);
+}
+
+.stat .v {
+  font-weight: bold;
+}
+
+table {
+  width: 100%;
+  font-size: 0.85em;
+}
+
+.err {
+  color: var(--error-color);
+}
+
+footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--background-color);
+  border-top: 1px dashed var(--secondary-color);
+  padding: 0.25rem 1rem;
+  font-size: 0.8em;
+}
+
+@media (max-width: 48rem) {
+  #kill {
+    float: none;
+    width: 100%;
+    margin-top: 0.5rem;
+  }
+
+  nav a {
+    display: inline-block;
+    margin: 0.15rem 0.5rem 0.15rem 0;
+  }
+}
