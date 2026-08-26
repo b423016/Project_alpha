@@ -3,66 +3,200 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Neural Router — overlay terminal</title>
-  <link rel="stylesheet" href="vendor/terminal.min.css" />
+  <title>NR — overlay terminal</title>
   <link rel="stylesheet" href="theme.css" />
 </head>
-<body class="terminal">
-  <header>
-    <strong>NR overlay</strong>
-    <span id="badge" class="badge">DELAYED</span>
-    <span id="status"></span>
-    <button id="kill" type="button">kill</button>
-    <nav>
-      <a href="#overview">1 Overview</a>
-      <a href="#chain">2 Chain</a>
-      <a href="#surface">3 Surface (stub)</a>
-      <a href="#blotter">4 Blotter</a>
-      <a href="#agents">5 Agents (stub)</a>
-      <a href="#settings">6 Settings (stub)</a>
-    </nav>
-  </header>
+<body>
+<div class="frame">
+  <!-- persistent chrome on every page (docs/plan.md §8) -->
+  <div class="cmd">
+    <span class="brand">NR·OVERLAY</span>
+    <span class="sep">│</span>
+    <span class="field">SPY <b id="c-under">—</b></span>
+    <span class="field">NAV <b id="c-nav">PAPER</b></span>
+    <span class="badge" id="c-badge">DELAYED</span>
+    <span class="badge paper">PAPER</span>
+    <span class="field">AGE <b id="c-age">—</b></span>
+    <span class="field">DECIDE <b id="c-decide">—</b></span>
+    <button id="kill" type="button" title="kill switch — no new tickets (k)">kill</button>
+  </div>
 
-  <section id="overview">
-    <h1>Overview</h1>
-    <div class="stats">
-      <span class="stat"><span class="k">snapshot</span><span class="v" id="ov-snapshot">—</span></span>
-      <span class="stat"><span class="k">SPY</span><span class="v" id="ov-under-price">—</span></span>
-      <span class="stat"><span class="k">contracts</span><span class="v" id="ov-n-contracts">—</span></span>
-      <span class="stat"><span class="k">feed</span><span class="v" id="ov-feed">—</span></span>
-      <span class="stat"><span class="k">kernel</span><span class="v" id="ov-killed">—</span></span>
-    </div>
-    <p>Top of book from the last validated snapshot. Data is delayed and labeled as such.</p>
-  </section>
+  <nav class="tabs" id="tabs">
+    <a href="#overview"><b>1</b>OVERVIEW</a>
+    <a href="#chain"><b>2</b>CHAIN</a>
+    <a href="#surface"><b>3</b>SURFACE</a>
+    <a href="#blotter"><b>4</b>BLOTTER</a>
+    <a href="#agents"><b>5</b>AGENTS</a>
+    <a href="#settings"><b>6</b>RISK/SET</a>
+  </nav>
 
-  <section id="chain">
-    <h1>Chain</h1>
-    <p>Funnel top-20 by utility (λ·|Δ|/mid). All rows are SPY puts.</p>
-    <table>
-      <thead>
-        <tr><th>OCC</th><th>exp</th><th>dte</th><th>strike</th><th>Δ</th><th>IV</th><th>mid</th><th>util</th><th>oi</th></tr>
-      </thead>
-      <tbody id="chain-body"><tr><td colspan="9">loading…</td></tr></tbody>
-    </table>
-  </section>
+  <main>
+    <!-- 1 OVERVIEW: 2x2 per plan.md §8 -->
+    <section class="page" id="page-overview">
+      <div class="panes">
+        <div class="pane">
+          <h2>Portfolio / Posture</h2>
+          <div class="kv">
+            <span class="k">snapshot</span><span class="v" id="ov-snapshot">—</span>
+            <span class="k">SPY last</span><span class="v big" id="ov-under-price">—</span>
+            <span class="k">$Δ vs band</span><span class="v" id="ov-band">—</span>
+            <span class="k">posture</span><span class="v" id="ov-posture">—</span>
+            <span class="k">kernel</span><span class="v" id="ov-killed">—</span>
+          </div>
+        </div>
+        <div class="pane">
+          <h2>Selected hedge (top of funnel)</h2>
+          <div class="kv" id="ov-pick"><span class="k">funnel</span><span class="v">loading…</span></div>
+        </div>
+        <div class="pane">
+          <h2>Holdings · ΔΓΘ</h2>
+          <table>
+            <thead><tr><th>name</th><th>qty</th><th>Δ$</th><th>Γ</th><th>Θ</th></tr></thead>
+            <tbody>
+              <tr><td>SPY</td><td>book</td><td id="ov-h-delta">—</td><td>—</td><td>—</td></tr>
+              <tr><td colspan="5" class="dim">position feed lands with Alpaca recon bit</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pane">
+          <h2>PnL sketch (pre/post hedge)</h2>
+          <p class="dim">Sketch arrives with fills in the blotter; paper fills are not a fill model.</p>
+          <div class="kv">
+            <span class="k">feed source</span><span class="v" id="ov-source">—</span>
+            <span class="k">contracts</span><span class="v" id="ov-n-contracts">—</span>
+          </div>
+        </div>
+      </div>
+    </section>
 
-  <section id="blotter">
-    <h1>Blotter</h1>
-    <table>
-      <thead>
-        <tr><th>key</th><th>rows</th><th>killed</th></tr>
-      </thead>
-      <tbody id="blotter-body"><tr><td colspan="3">loading…</td></tr></tbody>
-    </table>
-  </section>
+    <!-- 2 CHAIN: OMON layout (Bloomberg Split View) -->
+    <section class="page" id="page-chain">
+      <div class="filters" id="chain-filters">
+        <label>DTE <input id="f-dte-min" inputmode="numeric" placeholder="30" />–<input id="f-dte-max" inputmode="numeric" placeholder="60" /></label>
+        <label>|Δ| ≥ <input id="f-delta-min" inputmode="decimal" placeholder="0.20" /></label>
+        <label>|Δ| ≤ <input id="f-delta-max" inputmode="decimal" placeholder="0.50" /></label>
+        <span class="chip on" id="f-top20">TOP-20 ONLY</span>
+        <span class="showing" id="chain-showing"></span>
+      </div>
+      <div class="scroll">
+        <table class="omon-table">
+          <thead>
+            <tr>
+              <th colspan="4" class="call-hdr">CALLS</th>
+              <th class="strike-hdr">STRIKE</th>
+              <th colspan="4" class="put-hdr">PUTS</th>
+            </tr>
+            <tr>
+              <th>BID</th><th>ASK</th><th>VOL</th><th>Δ</th>
+              <th class="strike-col">K</th>
+              <th>BID</th><th>ASK</th><th>VOL</th><th>Δ</th>
+            </tr>
+          </thead>
+          <tbody id="chain-body"><tr><td colspan="9">loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
 
-  <section id="surface"><h1>Surface</h1><p>Stub — IV surface arrives after bits 1–8 (docs/execution.md non-goals).</p></section>
-  <section id="agents"><h1>Agents</h1><p>Stub — firm-graph seats land in a later spiral (docs/plan.md §13).</p></section>
-  <section id="settings"><h1>Settings</h1><p>Stub — config surface lands with the settings bit.</p></section>
+    <!-- 3 SURFACE: own HTTP, never in Claude context -->
+    <section class="page" id="page-surface">
+      <h2 style="color:var(--amber)">IV SURFACE</h2>
+      <div class="stub">3D mesh + PCA/SVI residual heatmap land in spiral 4 (SVI/PC2 is out of the first 8 bits). This page never enters Claude context.</div>
+      <table id="surface-mini">
+        <thead><tr><th>EXP</th><th>ATM IV</th><th>SKEW (25Δ−50Δ)</th></tr></thead>
+        <tbody><tr><td colspan="3" class="dim">from chain snapshot below, once funnel exposes it</td></tr></tbody>
+      </table>
+    </section>
 
-  <footer>
-    paper · DELAYED feed · kernel p99 ≤ 50 ms excludes broker RTT — see docs/hld.md
-  </footer>
-  <script src="app.js"></script>
+    <!-- 4 BLOTTER -->
+    <section class="page" id="page-blotter">
+      <div class="panes">
+        <div class="pane wide">
+          <h2>Order blotter</h2>
+          <table>
+            <thead><tr><th>TS</th><th>CLOI</th><th>OCC</th><th>SIDE</th><th>QTY</th><th>LIMIT</th><th>TIF</th><th>STATE</th></tr></thead>
+            <tbody id="blotter-body"><tr><td colspan="8" class="dim">no orders yet — gate has not fired</td></tr></tbody>
+          </table>
+        </div>
+        <div class="pane">
+          <h2>Ticket draft</h2>
+          <div class="kv" id="blot-draft"><span class="k">status</span><span class="v dim">kernel holds — band not breached or killed</span></div>
+        </div>
+        <div class="pane">
+          <h2>Gate rejects</h2>
+          <div class="kv" id="blot-rejects"><span class="k">count</span><span class="v">0</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5 AGENTS: Graph Node & Memory -->
+    <section class="page" id="page-agents">
+      <div class="agent-dashboard">
+        <div class="agent-graph-container pane">
+          <h2>Firm Graph (Memory Flow)</h2>
+          <canvas id="agent-canvas" class="agent-edges"></canvas>
+          <div class="agent-nodes">
+            <div class="node top" id="node-ceo" data-agent="ceo">CEO</div>
+            <div class="node mid-left" id="node-strategist" data-agent="strategist">Strategist (LLM)</div>
+            <div class="node mid-right" id="node-quant" data-agent="quant">Quant (LLM)</div>
+            <div class="node bot-left" id="node-risk" data-agent="risk">Risk (Rust)</div>
+            <div class="node bot-right" id="node-exec" data-agent="exec">Exec (Rust)</div>
+          </div>
+        </div>
+        <div class="agent-memory-panel pane" id="agent-memory-panel">
+          <h2 id="mem-title">Select an agent</h2>
+          <div class="mem-section">
+            <h4>Private Pad (CoT)</h4>
+            <pre id="mem-pad" class="dim">...</pre>
+          </div>
+          <div class="mem-section">
+            <h4>Department Blackboard</h4>
+            <pre id="mem-board" class="dim">...</pre>
+          </div>
+          <div class="mem-section">
+            <h4>Audit Ledger</h4>
+            <pre id="mem-audit" class="dim">...</pre>
+          </div>
+        </div>
+        <div class="pane wide">
+          <h2>decide_ms histogram (kernel only, excludes HTTP)</h2>
+          <div class="hist" id="ag-hist"></div>
+          <div class="hist-labels" id="ag-hist-labels"></div>
+          <div class="kv" style="margin-top:.4rem">
+            <span class="k">n</span><span class="v" id="ag-n">0</span>
+            <span class="k">sum ms</span><span class="v" id="ag-sum">0</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6 RISK / SETTINGS -->
+    <section class="page" id="page-settings">
+      <div class="panes">
+        <div class="pane">
+          <h2>Risk limits</h2>
+          <div class="kv" id="set-risk"><span class="k">loading</span><span class="v">…</span></div>
+        </div>
+        <div class="pane">
+          <h2>Data &amp; mode</h2>
+          <div class="kv">
+            <span class="k">source</span><span class="v" id="set-source">—</span>
+            <span class="k">mode</span><span class="v up">PAPER (live needs ALLOW_LIVE=1 + ALPACA_PAPER=false)</span>
+            <span class="k">stale alert</span><span class="v" id="set-stale">—</span>
+          </div>
+        </div>
+        <div class="pane wide">
+          <h2>Kill switch</h2>
+          <p class="dim">POST /api/kill sets the breaker; kernel refuses every new ticket until restart. Keyboard: <span class="amber">k</span>.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="statusbar">
+    <span class="msg ok" id="sb-msg">connected</span>
+    <span id="sb-right">paper · DELAYED · p99 ≤ 50 ms kernel-only SLA</span>
+  </div>
+</div>
+<script src="app.js"></script>
 </body>
 </html>

@@ -1,107 +1,360 @@
-/* Dark phosphor theme: overrides terminal.css custom properties only.
-   The framework owns all component styling; this file is theming + layout. */
+/* Bloomberg-style terminal skin: pure black canvas, amber function labels,
+   white data, green/red ticks, 1px grid panes. Single stylesheet, no kit. */
 :root {
-  --background-color: #0b0f0c;
-  --font-color: #b8ffc2;
-  --invert-font-color: #0b0f0c;
-  --primary-color: #57ff7a;
-  --secondary-color: #4e9e63;
-  --error-color: #ff6b6b;
-  --progress-bar-fill: #57ff7a;
-  --code-bg-color: #10160f;
-  --block-background-color: #0e140f;
+  --bg: #000000;
+  --panel: #000000;
+  --line: #262626;
+  --line-strong: #3a3a3a;
+  --amber: #ff9f1c;
+  --amber-dim: #b06f14;
+  --txt: #ffffff;
+  --dim: #8a8a8a;
+  --up: #00ff00;
+  --dn: #ff0000;
+  --sel-bg: #14203a;
+  --hl-row: #201703;
+  --paper: #00ffff;
+  --font: "Consolas", "Cascadia Mono", "Menlo", "Liberation Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
 }
 
 body {
-  max-width: 72rem;
-  margin: 0 auto;
-  padding: 0 1rem 3rem;
+  background: var(--bg);
+  color: var(--txt);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.35;
 }
 
-header {
-  border-bottom: 1px dashed var(--secondary-color);
-  padding-bottom: 0.5rem;
-  margin-bottom: 1rem;
+/* ---- frame: command bar / tabs / body / status ---- */
+.frame {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
 }
 
-nav a {
-  margin-right: 0.75rem;
+.cmd {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--line-strong);
+  padding: 0.3rem 0.75rem;
+  background: var(--panel);
+  white-space: nowrap;
+  overflow-x: auto;
 }
 
-#kill {
-  float: right;
+.cmd .brand {
+  color: var(--amber);
+  font-weight: bold;
+  letter-spacing: 0.08em;
+}
+
+.cmd .sep { color: var(--line-strong); }
+
+.cmd .field {
+  color: var(--dim);
+}
+
+.cmd .field b {
+  color: var(--txt);
+  font-weight: normal;
 }
 
 .badge {
-  border: 1px solid var(--secondary-color);
+  border: 1px solid var(--amber-dim);
+  color: var(--amber);
   padding: 0 0.35rem;
-  margin-left: 0.75rem;
-  font-size: 0.8em;
-  vertical-align: middle;
+  font-size: 11px;
 }
 
-.badge-killed {
-  color: var(--error-color);
-  border-color: var(--error-color);
+.badge.paper { border-color: var(--sel-bg); color: #7fa7ff; }
+
+#kill {
+  margin-left: auto;
+  background: transparent;
+  color: var(--dn);
+  border: 1px solid var(--dn);
+  font: inherit;
+  padding: 0.1rem 0.7rem;
+  cursor: pointer;
+  text-transform: uppercase;
 }
 
-#status {
-  margin-left: 0.75rem;
-  color: var(--secondary-color);
-}
+#kill:hover { background: var(--dn); color: #000; }
 
-.stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: 0.5rem;
-  margin: 0.5rem 0 1rem;
-}
-
-.stat {
-  border: 1px solid var(--secondary-color);
-  padding: 0.35rem 0.6rem;
+/* ---- function-key tab strip ---- */
+.tabs {
   display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
+  gap: 2px;
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--panel);
+  overflow-x: auto;
 }
 
-.stat .k {
-  color: var(--secondary-color);
+.tabs a {
+  color: var(--dim);
+  text-decoration: none;
+  padding: 0.25rem 0.85rem;
+  border-right: 1px solid var(--line);
 }
 
-.stat .v {
+.tabs a b {
+  color: var(--amber);
+  margin-right: 0.45rem;
   font-weight: bold;
 }
 
+.tabs a.on {
+  background: var(--bg);
+  color: var(--txt);
+  border-bottom: 2px solid var(--amber);
+}
+
+.tabs a:hover { color: var(--txt); }
+
+/* ---- pages ---- */
+main { flex: 1; min-height: 0; }
+
+.page { display: none; height: 100%; }
+.page.on { display: block; }
+
+.panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 1px;
+  background: var(--line);
+  height: 100%;
+}
+
+.pane {
+  background: var(--bg);
+  overflow: auto;
+  padding: 0.5rem 0.75rem;
+  min-width: 0;
+}
+
+.pane h2 {
+  color: var(--amber);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+}
+
+.pane.wide {
+  grid-column: 1 / -1;
+}
+
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 0.15rem 1rem; }
+.kv .k { color: var(--dim); text-transform: uppercase; font-size: 11px; }
+.kv .v { text-align: right; font-variant-numeric: tabular-nums; }
+.kv .v.big { font-size: 20px; color: var(--amber); }
+
+.up { color: var(--up); }
+.dn { color: var(--dn); }
+.dim { color: var(--dim); }
+.amber { color: var(--amber); }
+
+/* ---- tables ---- */
 table {
   width: 100%;
-  font-size: 0.85em;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
 }
 
-.err {
-  color: var(--error-color);
+th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-align: right;
+  padding: 0.2rem 0.5rem;
+  border-bottom: 1px solid var(--line-strong);
 }
 
-footer {
-  position: fixed;
-  bottom: 0;
+th:first-child, td:first-child { text-align: left; }
+
+td {
+  padding: 0.15rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+tr.top20 td { background: var(--hl-row); }
+tr.top20 td:first-child { border-left: 2px solid var(--amber); }
+
+tbody tr:hover td { background: var(--sel-bg); }
+
+/* ---- chain filters ---- */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+}
+
+.filters label {
+  color: var(--dim);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.filters input {
+  width: 4.5rem;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  color: var(--txt);
+  font: inherit;
+  padding: 0.05rem 0.3rem;
+}
+
+.chip {
+  border: 1px solid var(--line-strong);
+  color: var(--dim);
+  padding: 0.05rem 0.6rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.chip.on {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.showing { margin-left: auto; color: var(--dim); font-size: 11px; }
+
+.scroll { height: calc(100% - 2.4rem); overflow: auto; }
+
+/* ---- histogram ---- */
+.hist { display: flex; align-items: flex-end; gap: 4px; height: 90px; margin-top: 0.5rem; }
+.hist .bar { flex: 1; background: var(--amber-dim); min-height: 2px; position: relative; }
+.hist .bar.hot { background: var(--up); }
+.hist .bar span {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: var(--dim);
+}
+
+.hist-labels { display: flex; gap: 4px; margin-top: 2px; }
+.hist-labels i { flex: 1; text-align: center; font-style: normal; font-size: 10px; color: var(--dim); }
+
+/* ---- misc panels ---- */
+.stub {
+  border: 1px dashed var(--line-strong);
+  color: var(--dim);
+  padding: 1rem;
+  margin: 0.5rem 0;
+}
+
+.statusbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--line-strong);
+  background: var(--panel);
+  padding: 0.2rem 0.75rem;
+  font-size: 11px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.statusbar .msg.err { color: var(--dn); }
+.statusbar .msg.ok { color: var(--up); }
+
+/* ---- small screens: stack panes, keep tabs reachable ---- */
+@media (max-width: 900px) {
+  .panes { grid-template-columns: 1fr; grid-template-rows: none; height: auto; }
+  .pane { max-height: 40vh; }
+  .page.on { overflow-y: auto; }
+  .kv .v.big { font-size: 16px; }
+}
+
+
+/* ---- OMON Table ---- */
+.omon-table { text-align: right; }
+.omon-table th.call-hdr { text-align: right; color: var(--paper); border-bottom: 2px solid var(--paper); }
+.omon-table th.put-hdr { text-align: left; color: #ff55ff; border-bottom: 2px solid #ff55ff; }
+.omon-table th.strike-hdr { text-align: center; color: var(--amber); background: #111; border-bottom: 2px solid var(--amber); }
+.omon-table th.strike-col { text-align: center; color: var(--amber); background: #111; font-weight: bold; }
+.omon-table td.strike-col { text-align: center; color: var(--amber); background: #111; font-weight: bold; }
+.omon-table td.itm-call { background: #002233; }
+.omon-table td.itm-put { background: #330022; }
+
+/* ---- Agent Dashboard ---- */
+.agent-dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); height: calc(100% - 100px); }
+.agent-graph-container { position: relative; padding: 1rem; }
+.agent-nodes { position: relative; height: 300px; margin-top: 2rem; }
+.node { position: absolute; padding: 0.5rem 1rem; background: var(--bg); border: 1px solid var(--amber); border-radius: 4px; color: var(--txt); cursor: pointer; text-align: center; width: 120px; box-shadow: 0 0 5px rgba(255,159,28,0.2); transition: all 0.2s; }
+.node:hover { background: var(--sel-bg); box-shadow: 0 0 10px rgba(255,159,28,0.5); }
+.node.active { background: var(--amber); color: #000; font-weight: bold; }
+.node.top { top: 0; left: calc(50% - 60px); }
+.node.mid-left { top: 100px; left: 10%; }
+.node.mid-right { top: 100px; right: 10%; }
+.node.bot-left { top: 200px; left: 25%; }
+.node.bot-right { top: 200px; right: 25%; }
+.agent-memory-panel { display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; }
+.mem-section h4 { color: var(--amber-dim); margin: 0 0 0.25rem 0; font-size: 11px; text-transform: uppercase; }
+.mem-section pre { margin: 0; background: #050505; padding: 0.5rem; border: 1px solid var(--line-strong); white-space: pre-wrap; font-size: 11px; min-height: 40px; }
+
+
+
+/* ---- Phosphor Bloom & CRT Effects ---- */
+body {
+  text-shadow: 0 0 2px rgba(255, 255, 255, 0.3);
+}
+
+.amber { text-shadow: 0 0 5px var(--amber); }
+.up { text-shadow: 0 0 5px var(--up); }
+.dn { text-shadow: 0 0 5px var(--dn); }
+h2 { text-shadow: 0 0 8px var(--amber-dim); }
+
+.agent-edges {
+  position: absolute;
+  top: 0;
   left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.agent-nodes .node {
+  z-index: 1;
+}
+
+/* Scanlines overlay */
+body::after {
+  content: " ";
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
   right: 0;
-  background: var(--background-color);
-  border-top: 1px dashed var(--secondary-color);
-  padding: 0.25rem 1rem;
-  font-size: 0.8em;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  z-index: 9999;
+  background-size: 100% 2px, 3px 100%;
+  pointer-events: none;
 }
 
-@media (max-width: 48rem) {
-  #kill {
-    float: none;
-    width: 100%;
-    margin-top: 0.5rem;
-  }
-
-  nav a {
-    display: inline-block;
-    margin: 0.15rem 0.5rem 0.15rem 0;
-  }
-}
