@@ -1,0 +1,6 @@
+body { font-family: ui-monospace, Consolas, monospace; background: #0b0d10; color: #d7dde5; margin: 0; }
+header { display: flex; gap: 1rem; align-items: center; padding: 0.5rem 1rem; border-bottom: 1px solid #2a3139; }
+.badge { color: #e6c36a; }
+nav a { color: #8ab4d9; margin-right: 0.75rem; }
+section { padding: 1rem; }
+pre { white-space: pre-wrap; }

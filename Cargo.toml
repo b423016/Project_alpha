@@ -1,0 +1,39 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/config",
+    "crates/domain",
+    "crates/market-data",
+    "crates/ml-core",
+    "crates/execution",
+    "crates/policy",
+    "crates/neural-router",
+]
+default-members = ["crates/neural-router"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.85"
+
+[workspace.dependencies]
+neural-router-config = { path = "crates/config" }
+neural-router-domain = { path = "crates/domain" }
+neural-router-data = { path = "crates/market-data" }
+neural-router-ml = { path = "crates/ml-core" }
+neural-router-execution = { path = "crates/execution" }
+neural-router-policy = { path = "crates/policy" }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+dotenvy = "0.15"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+blake3 = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

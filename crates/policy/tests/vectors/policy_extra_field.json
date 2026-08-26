@@ -1,0 +1,14 @@
+{
+  "policy_id": "file-default-policy",
+  "regime": "unknown",
+  "dte_min": 30,
+  "dte_max": 60,
+  "delta_min": -0.5,
+  "delta_max": -0.2,
+  "max_premium_cents": 100000,
+  "lambda_svi": 1.0,
+  "lambda_pca": 1.0,
+  "lambda_eff": 1.0,
+  "reason": "x",
+  "extra": true
+}
