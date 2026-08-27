@@ -205,12 +205,14 @@ pub struct Policy { /* fields matching emit_policy + stamps */ }
 
 **Produces:** `funnel(chain, policy) -> Top20`, `dollar_delta(holdings, greeks) -> f64`, `band_status(delta, band) -> Hold | Breach`.
 
-- [ ] BS/IV in Rust (port or thin `quant-opts` / local). European BS documented; DTE < 7 excluded in funnel.
-- [ ] Funnel layers 1–5 + 7 (utility). Layer 6 SVI **skip** if no surface (`surface_svi` flag off).
-- [ ] Default policy file (not LLM): DTE 30–60, put Δ [−0.50, −0.20].
-- [ ] Feature `llm_quant=false` → `argmax(utility)` as the pick (still a proposal; bit 4 gates).
-- [ ] Bench: `crates/ml-core/benches/funnel.rs`. Record p50/p99 in the PR notes.
-- [ ] `cargo test -p neural-router-ml` && `cargo bench -p neural-router-ml --bench funnel`
+- [x] BS/IV in Rust (port or thin `quant-opts` / local). European BS documented; DTE < 7 excluded in funnel.
+- [x] Funnel layers 1–5 + 7 (utility). Layer 6 SVI **skip** if no surface (`surface_svi` flag off).
+- [x] Default policy file (not LLM): DTE 30–60, put Δ [−0.50, −0.20].
+- [x] Feature `llm_quant=false` → `argmax(utility)` as the pick (still a proposal; bit 4 gates).
+- [x] Bench: `crates/ml-core/benches/funnel.rs`. Record p50/p99 in the PR notes.
+- [x] `cargo test -p neural-router-ml` && `cargo bench -p neural-router-ml --bench funnel`
+
+Bench (`funnel_fixture`, criterion sample-size 40, no HTTP): mean **495 µs** (95% CI 479–512 µs). In-RAM kernel SLA is 50 ms.
 
 ---
 

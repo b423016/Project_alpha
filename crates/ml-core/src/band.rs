@@ -4,8 +4,13 @@ pub enum BandStatus {
     Breach,
 }
 
+/// Book dollar-Δ. LLD name: `dollar_delta(holdings, under_price)`.
+pub fn dollar_delta(holdings: f64, under_price: f64) -> f64 {
+    holdings * under_price
+}
+
 pub fn dollar_delta_stock(shares: f64, price: f64) -> f64 {
-    shares * price
+    dollar_delta(shares, price)
 }
 
 pub fn band_status(delta: f64, lo: f64, hi: f64) -> BandStatus {
@@ -27,7 +32,7 @@ mod tests {
 
     #[test]
     fn breach_outside_band() {
-        let d = dollar_delta_stock(1_000.0, 500.0);
+        let d = dollar_delta(1_000.0, 500.0);
         assert_eq!(band_status(d, -10_000.0, 10_000.0), BandStatus::Breach);
     }
 }
