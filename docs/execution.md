@@ -190,12 +190,12 @@ pub struct Policy { /* fields matching emit_policy + stamps */ }
 
 **Produces:** `SnapshotRing::push(validated) -> SnapshotId`, `current() -> Option<&ChainSnapshot>`, ingest trait `ChainSource`.
 
-- [ ] Fixture: ≥200 SPY puts/calls, bids/asks, OI. Mark `delayed: true`.
-- [ ] Validator: uncrossed, positive prices, OCC parse.
-- [ ] L0 ring size 2–4; refuse mix of desks in v1 (SPY only).
-- [ ] L1: TTL ≤ 15 min; negative cache on 429.
-- [ ] Ready: empty ring → `STALE_DATA`, no tickets.
-- [ ] Tests use fixture only. `cargo test -p neural-router-data`
+- [x] Fixture: ≥200 SPY puts/calls, bids/asks, OI. Mark `delayed: true`.
+- [x] Validator: uncrossed, positive prices, OCC parse.
+- [x] L0 ring size 2–4; refuse mix of desks in v1 (SPY only).
+- [x] L1: TTL ≤ 15 min; negative cache on 429.
+- [x] Ready: empty ring → `STALE_DATA`, no tickets.
+- [x] Tests use fixture only. `cargo test -p neural-router-data`
 
 ---
 
@@ -205,12 +205,14 @@ pub struct Policy { /* fields matching emit_policy + stamps */ }
 
 **Produces:** `funnel(chain, policy) -> Top20`, `dollar_delta(holdings, greeks) -> f64`, `band_status(delta, band) -> Hold | Breach`.
 
-- [ ] BS/IV in Rust (port or thin `quant-opts` / local). European BS documented; DTE < 7 excluded in funnel.
-- [ ] Funnel layers 1–5 + 7 (utility). Layer 6 SVI **skip** if no surface (`surface_svi` flag off).
-- [ ] Default policy file (not LLM): DTE 30–60, put Δ [−0.50, −0.20].
-- [ ] Feature `llm_quant=false` → `argmax(utility)` as the pick (still a proposal; bit 4 gates).
-- [ ] Bench: `crates/ml-core/benches/funnel.rs`. Record p50/p99 in the PR notes.
-- [ ] `cargo test -p neural-router-ml` && `cargo bench -p neural-router-ml --bench funnel`
+- [x] BS/IV in Rust (port or thin `quant-opts` / local). European BS documented; DTE < 7 excluded in funnel.
+- [x] Funnel layers 1–5 + 7 (utility). Layer 6 SVI **skip** if no surface (`surface_svi` flag off).
+- [x] Default policy file (not LLM): DTE 30–60, put Δ [−0.50, −0.20].
+- [x] Feature `llm_quant=false` → `argmax(utility)` as the pick (still a proposal; bit 4 gates).
+- [x] Bench: `crates/ml-core/benches/funnel.rs`. Record p50/p99 in the PR notes.
+- [x] `cargo test -p neural-router-ml` && `cargo bench -p neural-router-ml --bench funnel`
+
+Bench (`funnel_fixture`, criterion sample-size 40, no HTTP): mean **495 µs** (95% CI 479–512 µs). In-RAM kernel SLA is 50 ms.
 
 ---
 
@@ -224,11 +226,11 @@ pub struct Policy { /* fields matching emit_policy + stamps */ }
 client_order_id = blake3(snapshot_id, policy_id, occ, qty, side)
 ```
 
-- [ ] Reuse `RiskManager` in `crates/execution/src/risk.rs`; extend for options premium notional.
-- [ ] `rejection_count` window; ≥3 → breaker; panic path = **no LLM**, either skip or hardcoded ATM put **off** until explicitly flagged `panic_hedge`.
-- [ ] Default `panic_hedge=false` (flat / no new orders).
-- [ ] Tests: qty that blows 1%; daily pnl −5%; symbol not in top20; id mismatch.
-- [ ] `cargo test -p neural-router-execution`
+- [x] Reuse `RiskManager` in `crates/execution/src/risk.rs`; extend for options premium notional.
+- [x] `rejection_count` window; ≥3 → breaker; panic path = **no LLM**, either skip or hardcoded ATM put **off** until explicitly flagged `panic_hedge`.
+- [x] Default `panic_hedge=false` (flat / no new orders).
+- [x] Tests: qty that blows 1%; daily pnl −5%; symbol not in top20; id mismatch.
+- [x] `cargo test -p neural-router-execution`
 
 ---
 

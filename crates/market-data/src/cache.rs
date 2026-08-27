@@ -1,28 +1,36 @@
 use crate::DataError;
 
-/// L1 ingest TTL cache. Tests drive this without sockets.
+/// L1 ingest TTL cache. Keyed by `(underlying, expiry_set_hash)` per LLD.
+/// Tests drive this without sockets. TTL is capped at 15 min.
 #[derive(Debug, Default)]
 pub struct IngestCache {
     ttl_ms: i64,
+    key: Option<(String, u64)>,
     stored_at_ms: Option<i64>,
 }
 
 impl IngestCache {
+    pub const MAX_TTL_MS: i64 = 900_000;
+
     pub fn new(ttl_ms: i64) -> Self {
         Self {
-            ttl_ms,
+            ttl_ms: ttl_ms.clamp(0, Self::MAX_TTL_MS),
+            key: None,
             stored_at_ms: None,
         }
     }
 
-    pub fn store(&mut self, now_ms: i64) {
+    pub fn store(&mut self, now_ms: i64, underlying: &str, expiry_set_hash: u64) {
         self.stored_at_ms = Some(now_ms);
+        self.key = Some((underlying.to_string(), expiry_set_hash));
     }
 
-    pub fn fresh(&self, now_ms: i64) -> bool {
-        match self.stored_at_ms {
-            Some(t) => now_ms.saturating_sub(t) <= self.ttl_ms,
-            None => false,
+    pub fn fresh(&self, now_ms: i64, underlying: &str, expiry_set_hash: u64) -> bool {
+        match (&self.key, self.stored_at_ms) {
+            (Some((u, h)), Some(t)) if u == underlying && *h == expiry_set_hash => {
+                now_ms.saturating_sub(t) <= self.ttl_ms
+            }
+            _ => false,
         }
     }
 }
@@ -79,9 +87,19 @@ mod tests {
     #[test]
     fn ingest_ttl() {
         let mut c = IngestCache::new(900_000);
-        assert!(!c.fresh(0));
-        c.store(1_000);
-        assert!(c.fresh(1_000 + 899_000));
-        assert!(!c.fresh(1_000 + 900_001));
+        assert!(!c.fresh(0, "SPY", 1));
+        c.store(1_000, "SPY", 1);
+        assert!(c.fresh(1_000 + 899_000, "SPY", 1));
+        assert!(!c.fresh(1_000 + 900_001, "SPY", 1));
+    }
+
+    #[test]
+    fn ingest_ttl_is_keyed_and_capped() {
+        let mut c = IngestCache::new(3_600_000);
+        assert_eq!(c.ttl_ms, IngestCache::MAX_TTL_MS);
+        c.store(0, "SPY", 7);
+        assert!(!c.fresh(0, "QQQ", 7));
+        assert!(!c.fresh(0, "SPY", 8));
+        assert!(c.fresh(0, "SPY", 7));
     }
 }

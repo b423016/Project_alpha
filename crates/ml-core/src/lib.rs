@@ -9,7 +9,7 @@ mod model;
 mod predict;
 mod train;
 
-pub use band::{BandStatus, band_status, dollar_delta_stock};
+pub use band::{BandStatus, band_status, dollar_delta, dollar_delta_stock};
 pub use constraints::apply_constraints;
 pub use error::MlError;
 pub use funnel::{argmax_utility, decide_cpu_ms, funnel};

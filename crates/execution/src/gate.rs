@@ -2,6 +2,8 @@ use neural_router_domain::{
     NewOrder, Policy, Reject, RejectCode, RiskState, TicketProposal, Top20,
 };
 
+use crate::risk::RiskManager;
+
 pub fn client_order_id(proposal: &TicketProposal) -> String {
     let mut hasher = blake3::Hasher::new();
     hasher.update(proposal.snapshot_id.as_str().as_bytes());
@@ -25,6 +27,8 @@ pub struct GateLimits {
     pub max_slippage: f64,
     pub risk_frac: f64,
     pub max_daily_loss: f64,
+    pub under_price: f64,
+    pub panic_hedge: bool,
 }
 
 pub fn gate(
@@ -37,31 +41,9 @@ pub fn gate(
     if !limits.rth {
         return Err(Reject::new(RejectCode::Rth, "rth", "closed", "outside RTH"));
     }
-    if risk.breaker {
-        return Err(Reject::new(
-            RejectCode::Breaker,
-            "breaker",
-            risk.rejection_count.to_string(),
-            "circuit breaker",
-        ));
-    }
-    if risk.equity_cents <= 0 {
-        return Err(Reject::new(
-            RejectCode::PremiumCap,
-            "equity_cents",
-            risk.equity_cents.to_string(),
-            "non-positive equity",
-        ));
-    }
-    let loss_lim = (risk.equity_cents as f64 * limits.max_daily_loss) as i64;
-    if risk.daily_pnl_cents <= -loss_lim {
-        return Err(Reject::new(
-            RejectCode::DailyLoss,
-            "daily_pnl_cents",
-            risk.daily_pnl_cents.to_string(),
-            "daily loss limit",
-        ));
-    }
+    // panic_hedge is reserved; v1 still fails closed on breaker (no ATM put).
+    let _ = limits.panic_hedge;
+    RiskManager::overlay(limits.risk_frac, limits.max_daily_loss).check_overlay(risk)?;
     if proposal.snapshot_id != top20.snapshot_id {
         return Err(Reject::new(
             RejectCode::StaleSnap,
@@ -115,6 +97,21 @@ pub fn gate(
             proposal.limit_cents.to_string(),
             "limit beyond slippage",
         ));
+    }
+    if risk.book_dollar_delta_cents > 0 && limits.under_price > 0.0 {
+        let add_cents =
+            (f64::from(proposal.qty) * 100.0 * row.greeks.delta * limits.under_price * 100.0)
+                .round() as i64;
+        let post = risk.book_dollar_delta_cents.saturating_add(add_cents);
+        let slack = (risk.equity_cents as f64 * limits.risk_frac) as i64;
+        if post < -slack {
+            return Err(Reject::new(
+                RejectCode::OverHedge,
+                "book_dollar_delta_cents",
+                post.to_string(),
+                "hedge would flip $Δ through zero",
+            ));
+        }
     }
     proposal.validate_shape()?;
     Ok(NewOrder {
@@ -178,6 +175,8 @@ mod tests {
             max_slippage: 0.03,
             risk_frac: 0.01,
             max_daily_loss: 0.05,
+            under_price: 500.0,
+            panic_hedge: false,
         }
     }
 
@@ -300,6 +299,61 @@ mod tests {
             limits(true),
         )
         .unwrap_err();
+        assert_eq!(err.code, RejectCode::Breaker);
+    }
+
+    #[test]
+    fn ioc_and_fok_accepted() {
+        let mut p = proposal(1);
+        p.tif = TimeInForce::Fok;
+        let order = gate(
+            p,
+            &top(),
+            &Policy::file_default(),
+            &RiskState::paper_book(100_000_000),
+            limits(true),
+        )
+        .unwrap();
+        assert_eq!(order.tif, TimeInForce::Fok);
+    }
+
+    #[test]
+    fn over_hedge_flips_through_zero() {
+        let mut risk = RiskState::paper_book(100_000_000);
+        risk.book_dollar_delta_cents = 100_000;
+        let err = gate(
+            proposal(1),
+            &top(),
+            &Policy::file_default(),
+            &risk,
+            limits(true),
+        )
+        .unwrap_err();
+        assert_eq!(err.code, RejectCode::OverHedge);
+    }
+
+    #[test]
+    fn long_book_small_put_is_not_over_hedge() {
+        let mut risk = RiskState::paper_book(100_000_000);
+        risk.book_dollar_delta_cents = 50_000_000;
+        let order = gate(
+            proposal(1),
+            &top(),
+            &Policy::file_default(),
+            &risk,
+            limits(true),
+        )
+        .unwrap();
+        assert_eq!(order.qty, 1);
+    }
+
+    #[test]
+    fn panic_hedge_flag_does_not_bypass_breaker() {
+        let mut risk = RiskState::paper_book(100_000_000);
+        risk.bump_reject(1);
+        let mut lim = limits(true);
+        lim.panic_hedge = true;
+        let err = gate(proposal(1), &top(), &Policy::file_default(), &risk, lim).unwrap_err();
         assert_eq!(err.code, RejectCode::Breaker);
     }
 }

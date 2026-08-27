@@ -58,6 +58,9 @@ struct SnapshotBody {
     under_price: f64,
     n_contracts: usize,
     killed: bool,
+    /// Feed label from the ingest source (fixture, yahoo-delayed, ...).
+    source: String,
+    asof_unix_ms: i64,
 }
 
 fn auth(state: &AppState, headers: &HeaderMap) -> Result<(), StatusCode> {
@@ -82,7 +85,13 @@ async fn snapshot(
     let Some(snap) = guard.as_ref() else {
         return Ok((StatusCode::SERVICE_UNAVAILABLE, "STALE_DATA").into_response());
     };
-    let etag = format!("\"{}\"", snap.stamps.snapshot_id.as_str());
+    // Inhibit is kernel state, not market identity: fold it into ETag so a
+    // kill cannot 304-serve a pre-kill body that still says armed.
+    let etag = format!(
+        "\"{}:{}\"",
+        snap.stamps.snapshot_id.as_str(),
+        if state.inhibit() { "k" } else { "a" }
+    );
     if headers
         .get(header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok())
@@ -102,12 +111,14 @@ async fn snapshot(
         under_price: snap.under_price,
         n_contracts: snap.contracts.len(),
         killed: state.inhibit(),
+        source: snap.stamps.source.clone(),
+        asof_unix_ms: snap.stamps.asof_unix_ms,
     };
     let json = serde_json::to_vec(&body).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Response::builder()
         .status(StatusCode::OK)
         .header(header::ETAG, etag)
-        .header(header::CACHE_CONTROL, "max-age=0, private")
+        .header(header::CACHE_CONTROL, "no-store")
         .header(header::CONTENT_TYPE, "application/json")
         .body(axum::body::Body::from(json))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
@@ -128,6 +139,74 @@ async fn top20(State(state): State<AppState>, headers: HeaderMap) -> Result<Resp
         .status(StatusCode::OK)
         .header(header::ETAG, etag)
         .header(header::CACHE_CONTROL, "max-age=0, private")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(json))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn chain(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, StatusCode> {
+    auth(&state, &headers)?;
+    let guard = state
+        .snapshot
+        .lock()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let Some(snap) = guard.as_ref() else {
+        return Ok((StatusCode::SERVICE_UNAVAILABLE, "STALE_DATA").into_response());
+    };
+    let body = serde_json::json!({
+        "snapshot_id": snap.stamps.snapshot_id.as_str(),
+        "underlying": snap.underlying,
+        "under_price": snap.under_price,
+        "rows": &snap.contracts,
+    });
+    let json = serde_json::to_vec(&body).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CACHE_CONTROL, "max-age=0, private")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(json))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn policy(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, StatusCode> {
+    // v1 serves the active file policy; the Claude path swaps this once bit 7
+    // wires LastGood into state.
+    let p = Policy::file_default();
+    auth(&state, &headers)?;
+    let etag = format!("\"{}\"", p.policy_id.as_str());
+    if headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+        == Some(etag.as_str())
+    {
+        return Ok(StatusCode::NOT_MODIFIED.into_response());
+    }
+    let json = serde_json::to_vec(&p).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::ETAG, etag)
+        .header(header::CACHE_CONTROL, "max-age=0, private")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(json))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn agents(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, StatusCode> {
+    auth(&state, &headers)?;
+    let hist = state
+        .metrics
+        .lock()
+        .map(|h| h.json())
+        .unwrap_or_else(|_| serde_json::Value::Null);
+    let body = serde_json::json!({
+        "policy": Policy::file_default(),
+        "decide_hist": hist,
+        "killed": state.inhibit(),
+    });
+    let json = serde_json::to_vec(&body).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CACHE_CONTROL, "no-store")
         .header(header::CONTENT_TYPE, "application/json")
         .body(axum::body::Body::from(json))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
@@ -173,7 +252,6 @@ async fn kill(State(state): State<AppState>, headers: HeaderMap) -> Result<Statu
 const INDEX_HTML: &str = include_str!("../../../frontend/index.html");
 const APP_JS: &str = include_str!("../../../frontend/app.js");
 const THEME_CSS: &str = include_str!("../../../frontend/theme.css");
-const TERMINAL_CSS: &str = include_str!("../../../frontend/vendor/terminal.min.css");
 
 async fn index() -> Html<&'static str> {
     Html(INDEX_HTML)
@@ -193,21 +271,16 @@ async fn theme_css() -> impl IntoResponse {
     )
 }
 
-async fn terminal_css() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
-        TERMINAL_CSS,
-    )
-}
-
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/index.html", get(index))
         .route("/app.js", get(app_js))
         .route("/theme.css", get(theme_css))
-        .route("/vendor/terminal.min.css", get(terminal_css))
         .route("/api/snapshot", get(snapshot))
+        .route("/api/chain", get(chain))
+        .route("/api/policy", get(policy))
+        .route("/api/agents", get(agents))
         .route("/api/top20", get(top20))
         .route("/api/blotter", get(blotter))
         .route("/metrics", get(metrics))
@@ -295,7 +368,6 @@ mod tests {
             ("/", "text/html"),
             ("/app.js", "text/javascript"),
             ("/theme.css", "text/css"),
-            ("/vendor/terminal.min.css", "text/css"),
         ] {
             let res = app
                 .clone()
@@ -306,6 +378,69 @@ mod tests {
             let ct = res.headers().get(header::CONTENT_TYPE).unwrap();
             assert!(ct.to_str().unwrap().starts_with(want), "{uri} ct={ct:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn chain_lists_full_contract_set() {
+        let app = router(AppState::from_fixture());
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/chain")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(v["rows"].as_array().unwrap().len() >= 200);
+        assert_eq!(v["rows"][0]["right"], "Put");
+        assert!(v["under_price"].as_f64().unwrap() > 0.0);
+    }
+
+    #[tokio::test]
+    async fn policy_serves_bounds_and_lambdas() {
+        let app = router(AppState::from_fixture());
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/policy")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            res.headers().get(header::ETAG).unwrap(),
+            "\"file-default-policy\""
+        );
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["dte_min"], 30);
+        assert_eq!(v["dte_max"], 60);
+        assert_eq!(v["lambda_eff"], 1.0);
+    }
+
+    #[tokio::test]
+    async fn agents_exposes_decide_histogram() {
+        let app = router(AppState::from_fixture());
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["policy"]["regime"], "unknown");
+        assert!(v["decide_hist"]["counts"].as_array().unwrap().len() == 7);
     }
 
     #[tokio::test]

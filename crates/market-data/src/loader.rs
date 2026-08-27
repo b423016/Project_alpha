@@ -25,9 +25,29 @@ impl ChainSource for PlaceholderChainSource {
     }
 }
 
+/// Hermetic source: testdata only, no sockets.
+pub struct FixtureChainSource;
+
+impl ChainSource for FixtureChainSource {
+    fn fetch(&mut self) -> Result<RawChain, DataError> {
+        crate::fixture::load_raw_fixture()
+    }
+}
+
 pub fn collect(_settings: &Settings, symbol: &str) -> Result<(), DataError> {
     tracing::info!(%symbol, "collector entrypoint");
     Err(DataError::NotImplemented {
         feature: "polygon_l2_ingest",
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn placeholder_fails_closed_without_network() {
+        let err = PlaceholderChainSource.fetch().unwrap_err();
+        assert!(matches!(err, DataError::NotImplemented { .. }));
+    }
 }

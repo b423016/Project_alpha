@@ -81,12 +81,13 @@ pub fn implied_vol_put(s: f64, k: f64, t: f64, r: f64, q: f64, mid: f64) -> Resu
         }
         sigma = (sigma - diff / vega).clamp(1e-4, 5.0);
     }
-    Ok(sigma)
+    Err(MlError::Constraint("iv did not converge"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::MlError;
 
     #[test]
     fn atm_put_delta_negative() {
@@ -94,5 +95,13 @@ mod tests {
         assert!(g.delta < 0.0 && g.delta > -0.7);
         let px = put_price(500.0, 500.0, 30.0 / 365.0, 0.04, 0.01, 0.2).unwrap();
         assert!(px > 0.0);
+        let iv = implied_vol_put(500.0, 500.0, 30.0 / 365.0, 0.04, 0.01, px).unwrap();
+        assert!((iv - 0.2).abs() < 1e-3);
+    }
+
+    #[test]
+    fn iv_fails_closed_on_impossible_mid() {
+        let err = implied_vol_put(500.0, 500.0, 30.0 / 365.0, 0.04, 0.01, 1e9).unwrap_err();
+        assert!(matches!(err, MlError::Constraint(_)));
     }
 }

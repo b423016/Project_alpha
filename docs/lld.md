@@ -44,7 +44,7 @@ All money that can hit a broker: **integer cents** (`i64`). Qty: `u32`. Deltas/�
 | `TicketProposal` | snapshot_id, policy_id, occ, side=BUY, qty, limit_cents, tif, why | V4–V5 |
 | `NewOrder` | client_order_id, occ, side, qty, limit_cents, tif, snapshot_id, policy_id | only from Gate |
 | `Reject` | code, field, got, message | `message` log-only |
-| `RiskState` | equity_cents, daily_pnl_cents, rejection_count, breaker | equity>0 to trade |
+| `RiskState` | equity_cents, daily_pnl_cents, rejection_count, breaker, book_dollar_delta_cents | equity>0 to trade |
 | `BlotterRow` | client_order_id, state, occ, qty, filled_qty, … | state machine §4 |
 
 `client_order_id = hex(blake3(snapshot_id || policy_id || occ || qty_le || side))` (32-byte hex).
@@ -61,7 +61,7 @@ trait ChainSource {
 }
 
 fn validate_chain(raw: RawChain, now_ms: i64) -> Result<ChainSnapshot, DataError>
-fn SnapshotRing::push(s: ChainSnapshot) -> SnapshotId
+fn SnapshotRing::push(s: ChainSnapshot) -> Result<SnapshotId, DataError>
 fn SnapshotRing::current() -> Option<&ChainSnapshot>
 ```
 
@@ -96,8 +96,7 @@ fn gate(
     top20: &Top20,
     policy: &Policy,
     risk: &RiskState,
-    now_ms: i64,
-    rth: bool,
+    limits: GateLimits, // rth, max_slippage, risk_frac, max_daily_loss, under_price, panic_hedge
 ) -> Result<NewOrder, Reject>
 ```
 
@@ -205,6 +204,7 @@ Quant is **asynchronous**: Policy worker may have left a ticket in the mailbox. 
 | `LIMIT_AWAY` | V5 | limit vs mid+slippage |
 | `RTH` | Gate | outside session |
 | `DAILY_LOSS` | Gate | 5% |
+| `OVER_HEDGE` | Gate | post-hedge $Δ flips through 0 past slack |
 | `BREAKER` | Gate | rejection_count |
 | `STALE_DATA` | MDG | age |
 | `STALE_POS` | OMS | recon |

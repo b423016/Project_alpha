@@ -6,6 +6,8 @@ pub struct RiskState {
     pub daily_pnl_cents: i64,
     pub rejection_count: u32,
     pub breaker: bool,
+    /// Signed book $Δ in cents. 0 = no stock overlay (skip over-hedge).
+    pub book_dollar_delta_cents: i64,
 }
 
 impl RiskState {
@@ -15,6 +17,7 @@ impl RiskState {
             daily_pnl_cents: 0,
             rejection_count: 0,
             breaker: false,
+            book_dollar_delta_cents: 0,
         }
     }
 
