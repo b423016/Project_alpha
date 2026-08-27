@@ -226,11 +226,11 @@ Bench (`funnel_fixture`, criterion sample-size 40, no HTTP): mean **495 µs** (9
 client_order_id = blake3(snapshot_id, policy_id, occ, qty, side)
 ```
 
-- [ ] Reuse `RiskManager` in `crates/execution/src/risk.rs`; extend for options premium notional.
-- [ ] `rejection_count` window; ≥3 → breaker; panic path = **no LLM**, either skip or hardcoded ATM put **off** until explicitly flagged `panic_hedge`.
-- [ ] Default `panic_hedge=false` (flat / no new orders).
-- [ ] Tests: qty that blows 1%; daily pnl −5%; symbol not in top20; id mismatch.
-- [ ] `cargo test -p neural-router-execution`
+- [x] Reuse `RiskManager` in `crates/execution/src/risk.rs`; extend for options premium notional.
+- [x] `rejection_count` window; ≥3 → breaker; panic path = **no LLM**, either skip or hardcoded ATM put **off** until explicitly flagged `panic_hedge`.
+- [x] Default `panic_hedge=false` (flat / no new orders).
+- [x] Tests: qty that blows 1%; daily pnl −5%; symbol not in top20; id mismatch.
+- [x] `cargo test -p neural-router-execution`
 
 ---
 

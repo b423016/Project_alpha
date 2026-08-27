@@ -1,4 +1,5 @@
 use neural_router_config::Settings;
+use neural_router_domain::{Reject, RejectCode, RiskState as OverlayRisk};
 
 use crate::ExecutionError;
 
@@ -42,6 +43,43 @@ impl RiskManager {
         Ok(RiskDecision {
             size: self.size_for(state.equity),
         })
+    }
+
+    pub fn overlay(risk_frac: f64, max_daily_loss: f64) -> Self {
+        Self {
+            risk_limit_per_trade: risk_frac,
+            max_daily_loss,
+        }
+    }
+
+    /// Overlay book in cents. Fail closed: breaker, equity, 5% daily loss.
+    pub fn check_overlay(&self, risk: &OverlayRisk) -> Result<(), Reject> {
+        if risk.breaker {
+            return Err(Reject::new(
+                RejectCode::Breaker,
+                "breaker",
+                risk.rejection_count.to_string(),
+                "circuit breaker",
+            ));
+        }
+        if risk.equity_cents <= 0 {
+            return Err(Reject::new(
+                RejectCode::PremiumCap,
+                "equity_cents",
+                risk.equity_cents.to_string(),
+                "non-positive equity",
+            ));
+        }
+        let loss_lim = (risk.equity_cents as f64 * self.max_daily_loss) as i64;
+        if risk.daily_pnl_cents <= -loss_lim {
+            return Err(Reject::new(
+                RejectCode::DailyLoss,
+                "daily_pnl_cents",
+                risk.daily_pnl_cents.to_string(),
+                "daily loss limit",
+            ));
+        }
+        Ok(())
     }
 }
 
