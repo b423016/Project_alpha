@@ -5,6 +5,8 @@ use crate::PolicyError;
 pub struct LlmReq {
     pub prompt_version: &'static str,
     pub user: String,
+    /// Static prefix cache breakpoint (Anthropic). Unused by MockLlm.
+    pub cache_control: Option<&'static str>,
 }
 
 pub trait Llm {
@@ -68,7 +70,8 @@ mod tests {
         assert_eq!(
             m.complete(&LlmReq {
                 prompt_version: "v1",
-                user: "x".into()
+                user: "x".into(),
+                cache_control: Some("ephemeral"),
             })
             .unwrap(),
             "{}"

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
 
 use neural_router_config::Settings;
@@ -75,10 +75,56 @@ impl OverlayBroker for MockPaperBroker {
     }
 }
 
+/// Scripted EMS statuses. No sockets. 200 accept, 409 duplicate, 403 forbidden.
+pub struct ScriptedHttpBroker {
+    statuses: Mutex<VecDeque<u16>>,
+    inner: MockPaperBroker,
+}
+
+impl ScriptedHttpBroker {
+    pub fn new(statuses: impl Into<Vec<u16>>) -> Self {
+        Self {
+            statuses: Mutex::new(VecDeque::from(statuses.into())),
+            inner: MockPaperBroker::default(),
+        }
+    }
+
+    pub fn submit_count(&self) -> usize {
+        self.inner.submit_count()
+    }
+}
+
+impl OverlayBroker for ScriptedHttpBroker {
+    fn submit(&self, order: &NewOrder) -> Result<SubmitAck, ExecutionError> {
+        let status = self
+            .statuses
+            .lock()
+            .expect("script lock")
+            .pop_front()
+            .unwrap_or(200);
+        match status {
+            200 => self.inner.submit(order),
+            409 => Ok(SubmitAck {
+                broker_id: order.client_order_id.clone(),
+                duplicate: true,
+            }),
+            403 => Err(ExecutionError::Http(403)),
+            other => Err(ExecutionError::Http(other)),
+        }
+    }
+
+    fn position(&self, occ: &str) -> Result<i64, ExecutionError> {
+        self.inner.position(occ)
+    }
+}
+
 /// Alpaca REST placeholder. Fail closed without keys; never called from tests.
 pub struct AlpacaOverlay {
     paper: bool,
 }
+
+pub const PAPER_BASE: &str = "https://paper-api.alpaca.markets";
+pub const LIVE_BASE: &str = "https://api.alpaca.markets";
 
 impl AlpacaOverlay {
     pub fn from_settings(settings: &Settings) -> Result<Self, ExecutionError> {
@@ -91,6 +137,10 @@ impl AlpacaOverlay {
         Ok(Self {
             paper: settings.alpaca_paper,
         })
+    }
+
+    pub fn base_url(&self) -> &'static str {
+        if self.paper { PAPER_BASE } else { LIVE_BASE }
     }
 }
 
@@ -175,6 +225,25 @@ mod tests {
     }
 
     #[test]
+    fn scripted_http_200_409_403_without_network() {
+        let b = ScriptedHttpBroker::new(vec![200, 409, 403]);
+        let o = order("clo-1");
+        assert!(!b.submit(&o).unwrap().duplicate);
+        assert!(b.submit(&o).unwrap().duplicate);
+        assert!(matches!(b.submit(&o), Err(ExecutionError::Http(403))));
+        assert_eq!(b.submit_count(), 1);
+    }
+
+    #[test]
+    fn recon_uses_broker_position() {
+        let b = MockPaperBroker::default();
+        b.set_position("SPY260417P00500000", 2);
+        assert_eq!(b.position("SPY260417P00500000").unwrap(), 2);
+        let err = recon_position(1, b.position("SPY260417P00500000").unwrap()).unwrap_err();
+        assert_eq!(err.code, RejectCode::StalePos);
+    }
+
+    #[test]
     fn live_without_allow_live_is_not_paper() {
         let s = Settings {
             alpaca_api_key: Some("k".into()),
@@ -187,5 +256,18 @@ mod tests {
             AlpacaOverlay::from_settings(&s),
             Err(ExecutionError::NotPaper)
         ));
+    }
+
+    #[test]
+    fn paper_settings_use_paper_base_url() {
+        let s = Settings {
+            alpaca_api_key: Some("k".into()),
+            alpaca_secret_key: Some("s".into()),
+            alpaca_paper: true,
+            allow_live: false,
+            ..Settings::default()
+        };
+        let c = AlpacaOverlay::from_settings(&s).unwrap();
+        assert_eq!(c.base_url(), PAPER_BASE);
     }
 }

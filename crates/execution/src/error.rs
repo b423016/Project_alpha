@@ -10,4 +10,6 @@ pub enum ExecutionError {
     Risk(&'static str),
     #[error("live trading requires ALPACA_PAPER=false and ALLOW_LIVE=1")]
     NotPaper,
+    #[error("broker http {0}")]
+    Http(u16),
 }

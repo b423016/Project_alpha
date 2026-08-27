@@ -25,6 +25,7 @@ enum Command {
 async fn main() -> Result<()> {
     let _ = dotenvy::dotenv();
     tracing_subscriber::fmt()
+        .json()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
     let cli = Cli::parse();

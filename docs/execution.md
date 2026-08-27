@@ -240,12 +240,12 @@ client_order_id = blake3(snapshot_id, policy_id, occ, qty, side)
 
 **Produces:** `Broker::submit` with `client_order_id`; position GET recon.
 
-- [ ] Mock server or `wiremock`-style fixture for 200/403/409 duplicate.
-- [ ] Duplicate `client_order_id` → treat as already submitted, not a second order.
-- [ ] Recon: blotter vs positions; mismatch → `STALE_POS`.
-- [ ] Paper URL only unless `ALLOW_LIVE=1`.
-- [ ] Do **not** call real Alpaca in CI.
-- [ ] `cargo test -p neural-router-execution --features paper-mock`
+- [x] Mock server or `wiremock`-style fixture for 200/403/409 duplicate.
+- [x] Duplicate `client_order_id` → treat as already submitted, not a second order.
+- [x] Recon: blotter vs positions; mismatch → `STALE_POS`.
+- [x] Paper URL only unless `ALLOW_LIVE=1`.
+- [x] Do **not** call real Alpaca in CI.
+- [x] `cargo test -p neural-router-execution --features paper-mock`
 
 ---
 
@@ -255,10 +255,10 @@ client_order_id = blake3(snapshot_id, policy_id, occ, qty, side)
 
 **Produces:** `nr_*` histograms; append-only `audit.jsonl` (or SQLite).
 
-- [ ] `tracing` JSON. Histogram buckets include 1, 5, 10, 25, 50, 100 ms for `decide_ms`.
-- [ ] Audit fields: time, role, tool, raw JSON, `Reject` or accept, snapshot_id, policy_id, prompt_version, model.
-- [ ] Tests: redaction; audit append is monotonic; `/metrics` contains `nr_decide_ms`.
-- [ ] No Cloud yet.
+- [x] `tracing` JSON. Histogram buckets include 1, 5, 10, 25, 50, 100 ms for `decide_ms`.
+- [x] Audit fields: time, role, tool, raw JSON, `Reject` or accept, snapshot_id, policy_id, prompt_version, model.
+- [x] Tests: redaction; audit append is monotonic; `/metrics` contains `nr_decide_ms`.
+- [x] No Cloud yet.
 
 ---
 
@@ -268,7 +268,7 @@ client_order_id = blake3(snapshot_id, policy_id, occ, qty, side)
 
 **Produces:** `crates/policy` — `validate_policy`, `validate_ticket`, `last_good`, HTTP client.
 
-- [ ] **Golden files** under `crates/policy/tests/vectors/`:
+- [x] **Golden files** under `crates/policy/tests/vectors/`:
   - `policy_ok.json`
   - `policy_extra_field.json` → V2 fail
   - `policy_nan_lambda.json` → V3
@@ -276,12 +276,12 @@ client_order_id = blake3(snapshot_id, policy_id, occ, qty, side)
   - `ticket_stale_snapshot.json` → `STALE_SNAP`
   - `ticket_qty_too_big.json` → `QTY_RECOMPUTE`
   - `ticket_sell.json` → enum fail
-- [ ] Mock: inject tool_use JSON; assert last-good **unchanged** on Strategist fail.
-- [ ] Quant: one retry then hold.
-- [ ] Token budget counter; on exhaust, last-good only.
-- [ ] Prompt cache headers if using Anthropic cache breakpoints on the static prefix.
-- [ ] `cargo test -p neural-router-policy`
-- [ ] Manual (optional): `ANTHROPIC_API_KEY` + fixture top20 → must still pass V4–V5.
+- [x] Mock: inject tool_use JSON; assert last-good **unchanged** on Strategist fail.
+- [x] Quant: one retry then hold.
+- [x] Token budget counter; on exhaust, last-good only.
+- [x] Prompt cache headers if using Anthropic cache breakpoints on the static prefix.
+- [x] `cargo test -p neural-router-policy`
+- [x] Manual (optional): `ANTHROPIC_API_KEY` + fixture top20 → must still pass V4–V5.
 
 Do not enable `llm_quant` in the default CLI until these vectors are green.
 
@@ -293,11 +293,11 @@ Do not enable `llm_quant` in the default CLI until these vectors are green.
 
 **Produces:** axum (or similar) in `neural-router`; frontend reads JSON.
 
-- [ ] Routes: `/api/snapshot`, `/api/top20`, `/api/blotter`, `/api/metrics`, `POST /api/kill`.
-- [ ] Auth: loopback bind default `127.0.0.1`; optional `UI_TOKEN`.
-- [ ] Kill must work even when `STALE_DATA`.
-- [ ] Pages 3 (surface), 5 (agents), 6 (settings) **stub links** only unless time left.
-- [ ] Manual: DELAYED badge visible; kill stops submits.
+- [x] Routes: `/api/snapshot`, `/api/top20`, `/api/blotter`, `/api/metrics`, `POST /api/kill`.
+- [x] Auth: loopback bind default `127.0.0.1`; optional `UI_TOKEN`.
+- [x] Kill must work even when `STALE_DATA`.
+- [x] Pages 3 (surface), 5 (agents), 6 (settings) **stub links** only unless time left.
+- [x] Manual: DELAYED badge visible; kill stops submits.
 
 ---
 

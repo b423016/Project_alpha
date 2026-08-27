@@ -284,6 +284,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/top20", get(top20))
         .route("/api/blotter", get(blotter))
         .route("/metrics", get(metrics))
+        .route("/api/metrics", get(metrics))
         .route("/api/kill", post(kill))
         .with_state(state)
 }
@@ -345,6 +346,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn metrics_alias_and_nr_decide_ms() {
+        let app = router(AppState::from_fixture());
+        for uri in ["/metrics", "/api/metrics"] {
+            let res = app
+                .clone()
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(res.status(), StatusCode::OK, "{uri}");
+            let body =
+                String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec())
+                    .unwrap();
+            assert!(body.contains("nr_decide_ms"), "{uri}");
+        }
+    }
+
+    #[tokio::test]
     async fn metrics_has_nr_decide_ms() {
         let app = router(AppState::from_fixture());
         let res = app
@@ -359,6 +377,23 @@ mod tests {
         let bytes = res.into_body().collect().await.unwrap().to_bytes();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("nr_decide_ms"));
+    }
+
+    #[tokio::test]
+    async fn missing_ui_token_is_unauthorized() {
+        let mut state = AppState::from_fixture();
+        state.token = Some("nr-test-token".into());
+        let app = router(state);
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/blotter")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]

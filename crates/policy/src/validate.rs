@@ -101,6 +101,31 @@ impl LastGood {
     }
 }
 
+/// Claude token budget. Exhaustion keeps last-good; no new ticket.
+#[derive(Debug, Clone)]
+pub struct TokenBudget {
+    pub remaining: u32,
+}
+
+impl TokenBudget {
+    pub fn new(remaining: u32) -> Self {
+        Self { remaining }
+    }
+
+    pub fn try_spend(&mut self, n: u32) -> Result<(), Reject> {
+        if self.remaining < n {
+            return Err(Reject::new(
+                RejectCode::BrainDown,
+                "tokens",
+                self.remaining.to_string(),
+                "token budget exhausted — last-good only",
+            ));
+        }
+        self.remaining -= n;
+        Ok(())
+    }
+}
+
 pub fn quant_with_one_retry(
     first: &str,
     retry: Option<&str>,
@@ -286,5 +311,16 @@ mod tests {
     fn missing_key_is_brain_down() {
         let err = crate::PolicyError::BrainDown("missing ANTHROPIC_API_KEY").reject();
         assert_eq!(err.code, RejectCode::BrainDown);
+    }
+
+    #[test]
+    fn token_budget_exhaust_keeps_last_good() {
+        let lg = LastGood::file_default();
+        let before = lg.policy.clone();
+        let mut budget = TokenBudget::new(1);
+        budget.try_spend(1).unwrap();
+        let err = budget.try_spend(1).unwrap_err();
+        assert_eq!(err.code, RejectCode::BrainDown);
+        assert_eq!(lg.policy, before);
     }
 }

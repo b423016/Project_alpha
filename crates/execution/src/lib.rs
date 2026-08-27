@@ -15,7 +15,8 @@ pub use blotter::{Blotter, BlotterRow, OrderState};
 pub use error::ExecutionError;
 pub use gate::{GateLimits, client_order_id, gate, kernel_qty};
 pub use overlay_broker::{
-    AlpacaOverlay, MockPaperBroker, OverlayBroker, SubmitAck, recon_position,
+    AlpacaOverlay, LIVE_BASE, MockPaperBroker, OverlayBroker, PAPER_BASE, ScriptedHttpBroker,
+    SubmitAck, recon_position,
 };
 pub use risk::{RiskDecision, RiskManager};
 pub use router::{NewOrder, RouteDecision, decide, route};
