@@ -116,6 +116,20 @@ pub struct DecideHist {
 }
 
 impl DecideHist {
+    const BUCKET_LABELS: [&'static str; 7] = ["1", "5", "10", "25", "50", "100", "+Inf"];
+
+    /// Bucket counts for UI histograms; labels align with BUCKETS + Inf.
+    pub fn json(&self) -> serde_json::Value {
+        let mut counts: Vec<u64> = self.counts.to_vec();
+        counts.push(self.inf);
+        serde_json::json!({
+            "labels": Self::BUCKET_LABELS,
+            "counts": counts,
+            "sum_ms": self.sum,
+            "n": self.n,
+        })
+    }
+
     pub fn record(&mut self, ms: u64) {
         self.sum += ms;
         self.n += 1;
@@ -151,6 +165,20 @@ mod tests {
 
     use super::*;
     use crate::overlay_broker::MockPaperBroker;
+
+    #[test]
+    fn hist_json_buckets_align_with_labels() {
+        let mut h = DecideHist::default();
+        h.record(0); // <= 1ms bucket
+        h.record(3); // <= 5ms bucket
+        h.record(500); // +Inf bucket
+        let v = h.json();
+        assert_eq!(v["labels"][6], "+Inf");
+        assert_eq!(v["counts"][0], 1);
+        assert_eq!(v["counts"][1], 1);
+        assert_eq!(v["counts"][6], 1);
+        assert_eq!(v["n"], 3);
+    }
 
     #[test]
     fn reject_is_audited_and_never_submitted() {

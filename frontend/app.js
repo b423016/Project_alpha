@@ -21,6 +21,14 @@ const set = (id, text) => {
 };
 const fmt = (x, d) => (typeof x === "number" && Number.isFinite(x) ? x.toFixed(d) : "—");
 
+function formatAge(ageMs) {
+  if (ageMs == null) return "—";
+  if (ageMs < 60_000) return `${Math.round(ageMs / 1000)}s`;
+  if (ageMs < 3_600_000) return `${Math.round(ageMs / 60_000)}m`;
+  if (ageMs < 86_400_000) return `${Math.round(ageMs / 3_600_000)}h`;
+  return `${Math.round(ageMs / 86_400_000)}d`;
+}
+
 function msg(text, cls) {
   const el = $("sb-msg");
   if (!el) return;
@@ -29,7 +37,7 @@ function msg(text, cls) {
 }
 
 async function getJson(path) {
-  const res = await fetch(path);
+  const res = await fetch(path, { cache: "no-store" });
   if (!res.ok) throw new Error(`${path} -> ${res.status}`);
   return res.json();
 }
@@ -63,6 +71,10 @@ function top20Map() {
   return m;
 }
 
+function isKilled() {
+  return Boolean(state.blotter?.killed || state.agents?.killed || state.snap?.killed);
+}
+
 function renderChrome() {
   const s = state.snap;
   if (!s) return;
@@ -70,14 +82,12 @@ function renderChrome() {
   $("c-badge").textContent = s.delayed_badge ?? "DELAYED";
   const ageMs =
     typeof s.asof_unix_ms === "number" ? Math.max(0, Date.now() - s.asof_unix_ms) : null;
-  $("c-age").textContent =
-    ageMs === null
-      ? "—"
-      : ageMs < 60000
-        ? `${Math.round(ageMs / 1000)}s`
-        : `${Math.round(ageMs / 60000)}m`;
+  $("c-age").textContent = formatAge(ageMs);
   const h = state.agents?.decide_hist;
   $("c-decide").textContent = h && h.n > 0 ? `~${Math.round(h.sum_ms / h.n)}ms` : "—";
+  if (isKilled()) {
+    msg("KILL ENGAGED — kernel refuses new tickets until restart", "err");
+  }
 }
 
 function renderOverview() {
@@ -87,11 +97,12 @@ function renderOverview() {
   set("ov-under-price", fmt(s.under_price, 2));
   // Book $Δ needs the position feed (Alpaca recon bit); never fake it.
   set("ov-band", "pending position feed");
-  set("ov-posture", state.agents?.killed || s.killed ? "KILLED" : "HOLD");
+  const killed = isKilled();
+  set("ov-posture", killed ? "KILLED" : "HOLD");
   const k = $("ov-killed");
   if (k) {
-    k.textContent = s.killed ? "KILLED" : "armed";
-    k.className = s.killed ? "v dn" : "v";
+    k.textContent = killed ? "KILLED" : "armed";
+    k.className = killed ? "v dn" : "v";
   }
   set("ov-source", s.source ?? "—");
   set("ov-n-contracts", String(s.n_contracts ?? "—"));
