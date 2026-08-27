@@ -190,12 +190,12 @@ pub struct Policy { /* fields matching emit_policy + stamps */ }
 
 **Produces:** `SnapshotRing::push(validated) -> SnapshotId`, `current() -> Option<&ChainSnapshot>`, ingest trait `ChainSource`.
 
-- [ ] Fixture: ≥200 SPY puts/calls, bids/asks, OI. Mark `delayed: true`.
-- [ ] Validator: uncrossed, positive prices, OCC parse.
-- [ ] L0 ring size 2–4; refuse mix of desks in v1 (SPY only).
-- [ ] L1: TTL ≤ 15 min; negative cache on 429.
-- [ ] Ready: empty ring → `STALE_DATA`, no tickets.
-- [ ] Tests use fixture only. `cargo test -p neural-router-data`
+- [x] Fixture: ≥200 SPY puts/calls, bids/asks, OI. Mark `delayed: true`.
+- [x] Validator: uncrossed, positive prices, OCC parse.
+- [x] L0 ring size 2–4; refuse mix of desks in v1 (SPY only).
+- [x] L1: TTL ≤ 15 min; negative cache on 429.
+- [x] Ready: empty ring → `STALE_DATA`, no tickets.
+- [x] Tests use fixture only. `cargo test -p neural-router-data`
 
 ---
 

@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
 
-use neural_router_domain::{OptionContract, OptionRight, PolicyId, SnapshotId, Stamps};
+use std::hash::{Hash, Hasher};
+
+use neural_router_domain::{OccSymbol, OptionContract, OptionRight, PolicyId, SnapshotId, Stamps};
 use serde::{Deserialize, Serialize};
 
 use crate::DataError;
@@ -39,6 +41,15 @@ impl ChainSnapshot {
     pub fn data_age_ms(&self, now_ms: i64) -> i64 {
         self.stamps.data_age_ms(now_ms)
     }
+
+    pub fn expiry_set_hash(&self) -> u64 {
+        let mut expiries: Vec<&str> = self.contracts.iter().map(|c| c.expiry.as_str()).collect();
+        expiries.sort_unstable();
+        expiries.dedup();
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        expiries.hash(&mut h);
+        h.finish()
+    }
 }
 
 pub fn validate_chain(raw: RawChain, _now_ms: i64) -> Result<ChainSnapshot, DataError> {
@@ -54,6 +65,13 @@ pub fn validate_chain(raw: RawChain, _now_ms: i64) -> Result<ChainSnapshot, Data
         PolicyId::new(raw.policy_id).map_err(|_| DataError::InvalidSnapshot("policy_id"))?;
     let mut contracts = Vec::new();
     for c in raw.contracts {
+        // OCC serde is a string newtype; re-parse so garbage never enters the ring.
+        if OccSymbol::parse(c.occ.as_str()).is_err() {
+            continue;
+        }
+        if c.underlying != "SPY" || !c.occ.as_str().starts_with("SPY") {
+            continue;
+        }
         if c.check_quotes().is_err() {
             continue;
         }
@@ -115,6 +133,10 @@ impl SnapshotRing {
     pub fn is_empty(&self) -> bool {
         self.slots.is_empty()
     }
+
+    pub fn len(&self) -> usize {
+        self.slots.len()
+    }
 }
 
 pub fn current_or_stale(
@@ -130,4 +152,94 @@ pub fn current_or_stale(
         return Err(DataError::Stale { age_ms: age });
     }
     Ok(snap)
+}
+
+#[cfg(test)]
+mod tests {
+    use neural_router_domain::{OccSymbol, OptionContract, OptionRight};
+
+    use super::*;
+
+    fn put(i: u32) -> OptionContract {
+        let strike = 400 + i * 5;
+        OptionContract {
+            occ: OccSymbol::parse(format!("SPY260417P{strike:08}")).unwrap(),
+            underlying: "SPY".into(),
+            expiry: "2026-04-17".into(),
+            right: OptionRight::Put,
+            strike: f64::from(strike),
+            dte: 30,
+            bid: 1.0,
+            ask: 1.1,
+            last: Some(1.05),
+            oi: 100,
+            volume: 10,
+        }
+    }
+
+    fn raw(n_puts: u32) -> RawChain {
+        RawChain {
+            underlying: "SPY".into(),
+            under_price: 500.0,
+            asof_unix_ms: 1_000,
+            exchange_ts_ms: Some(900),
+            delayed: true,
+            source: "fixture".into(),
+            snapshot_id: "snap-fix01".into(),
+            policy_id: "file-default-policy".into(),
+            contracts: (0..n_puts).map(put).collect(),
+        }
+    }
+
+    #[test]
+    fn rejects_non_spy_desk() {
+        let mut r = raw(20);
+        r.underlying = "QQQ".into();
+        assert!(matches!(
+            validate_chain(r, 0),
+            Err(DataError::InvalidSnapshot("v1 desk is SPY only"))
+        ));
+    }
+
+    #[test]
+    fn insufficient_puts_is_depth_error() {
+        assert_eq!(
+            validate_chain(raw(19), 0).unwrap_err(),
+            DataError::InsufficientDepth
+        );
+    }
+
+    #[test]
+    fn drops_crossed_and_garbage_occ() {
+        let mut r = raw(22);
+        r.contracts[0].bid = 2.0;
+        r.contracts[0].ask = 1.0;
+        r.contracts[1].occ = OccSymbol("NOT-AN-OCC".into());
+        let snap = validate_chain(r, 0).unwrap();
+        assert_eq!(snap.puts().count(), 20);
+        assert_eq!(snap.data_age_ms(1_100), 200);
+    }
+
+    #[test]
+    fn ring_refuses_mixed_desks_and_caps_at_four() {
+        let snap = validate_chain(raw(20), 0).unwrap();
+        let mut ring = SnapshotRing::new();
+        for i in 0..5 {
+            let mut s = snap.clone();
+            s.stamps.snapshot_id = SnapshotId::new(format!("snap-cap{i:02}")).unwrap();
+            ring.push(s).unwrap();
+        }
+        assert_eq!(ring.len(), 4);
+        assert_eq!(
+            ring.current().unwrap().stamps.snapshot_id.as_str(),
+            "snap-cap04"
+        );
+
+        let mut other = snap;
+        other.underlying = "QQQ".into();
+        assert!(matches!(
+            ring.push(other),
+            Err(DataError::InvalidSnapshot("mixed desks"))
+        ));
+    }
 }

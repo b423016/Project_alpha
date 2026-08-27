@@ -61,7 +61,7 @@ trait ChainSource {
 }
 
 fn validate_chain(raw: RawChain, now_ms: i64) -> Result<ChainSnapshot, DataError>
-fn SnapshotRing::push(s: ChainSnapshot) -> SnapshotId
+fn SnapshotRing::push(s: ChainSnapshot) -> Result<SnapshotId, DataError>
 fn SnapshotRing::current() -> Option<&ChainSnapshot>
 ```
 
