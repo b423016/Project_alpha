@@ -21,9 +21,6 @@ pub struct Settings {
     pub alpaca_api_key: Option<String>,
     pub alpaca_secret_key: Option<String>,
     pub alpaca_paper: bool,
-    pub mongo_uri: Option<String>,
-    pub prediction_horizon_us: u64,
-    pub order_book_levels: usize,
     pub risk_limit_per_trade: f64,
     pub max_daily_loss: f64,
     pub symbol: String,
@@ -52,9 +49,6 @@ impl fmt::Debug for Settings {
             .field("alpaca_api_key", &redact(&self.alpaca_api_key))
             .field("alpaca_secret_key", &redact(&self.alpaca_secret_key))
             .field("alpaca_paper", &self.alpaca_paper)
-            .field("mongo_uri", &redact(&self.mongo_uri))
-            .field("prediction_horizon_us", &self.prediction_horizon_us)
-            .field("order_book_levels", &self.order_book_levels)
             .field("risk_limit_per_trade", &self.risk_limit_per_trade)
             .field("max_daily_loss", &self.max_daily_loss)
             .field("symbol", &self.symbol)
@@ -89,9 +83,6 @@ impl Default for Settings {
             alpaca_api_key: None,
             alpaca_secret_key: None,
             alpaca_paper: true,
-            mongo_uri: None,
-            prediction_horizon_us: 500,
-            order_book_levels: 10,
             risk_limit_per_trade: 0.01,
             max_daily_loss: 0.05,
             symbol: "SPY".into(),
@@ -122,9 +113,6 @@ impl Settings {
             alpaca_api_key: env_optional("ALPACA_API_KEY"),
             alpaca_secret_key: env_optional("ALPACA_SECRET_KEY"),
             alpaca_paper: env_bool("ALPACA_PAPER", true)?,
-            mongo_uri: env_optional("MONGO_URI"),
-            prediction_horizon_us: env_parse("PREDICTION_HORIZON", 500)?,
-            order_book_levels: env_parse("ORDER_BOOK_LEVELS", 10)?,
             risk_limit_per_trade: env_parse("RISK_LIMIT_PER_TRADE", 0.01)?,
             max_daily_loss: env_parse("MAX_DAILY_LOSS", 0.05)?,
             symbol: env_optional("SYMBOL").unwrap_or_else(|| "SPY".into()),
@@ -206,8 +194,6 @@ mod tests {
         let settings = Settings::default();
         assert_eq!(settings.symbol, "SPY");
         assert!(settings.alpaca_paper);
-        assert_eq!(settings.order_book_levels, 10);
-        assert_eq!(settings.prediction_horizon_us, 500);
         assert!((settings.risk_limit_per_trade - 0.01).abs() < 1e-12);
         assert!((settings.max_daily_loss - 0.05).abs() < 1e-12);
         assert!(!settings.llm_strategist);

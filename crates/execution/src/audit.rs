@@ -5,7 +5,7 @@ use std::path::Path;
 use neural_router_domain::{NewOrder, Reject};
 use serde::Serialize;
 
-use crate::overlay_broker::{OverlayBroker, SubmitAck};
+use crate::overlay_broker::{Broker, SubmitAck};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AuditEvent {
@@ -21,10 +21,17 @@ pub struct AuditEvent {
     pub raw: String,
 }
 
+pub fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
 impl AuditEvent {
     pub fn reject(r: &Reject, snapshot_id: Option<String>, policy_id: Option<String>) -> Self {
         Self {
-            ts_ms: 0,
+            ts_ms: now_ms(),
             role: "gate".into(),
             tool: "gate".into(),
             accept: false,
@@ -39,7 +46,7 @@ impl AuditEvent {
 
     pub fn accept(order: &NewOrder) -> Self {
         Self {
-            ts_ms: 0,
+            ts_ms: now_ms(),
             role: "gate".into(),
             tool: "submit".into(),
             accept: true,
@@ -81,7 +88,7 @@ pub fn append_file(path: &Path, ev: &AuditEvent) -> std::io::Result<()> {
 }
 
 /// Journal before mutate: audit then submit. Reject never reaches the broker.
-pub fn submit_after_audit<B: OverlayBroker>(
+pub fn submit_after_audit<B: Broker>(
     audit: &mut MemoryAudit,
     broker: &B,
     gated: Result<NewOrder, Reject>,
@@ -198,6 +205,7 @@ mod tests {
         assert_eq!(err.code, RejectCode::NotInTop20);
         assert_eq!(broker.submit_count(), 0);
         assert_eq!(audit.rows.len(), 1);
+        assert!(audit.rows[0].ts_ms > 1_000_000_000_000);
         assert!(!audit.rows[0].accept);
         assert_eq!(audit.rows[0].code.as_deref(), Some("NOT_IN_TOP20"));
         assert!(!audit.jsonl().contains("sk-"));
@@ -227,6 +235,7 @@ mod tests {
             None,
         ));
         assert_eq!(audit.rows.len(), 2);
+        assert!(audit.rows[1].ts_ms >= audit.rows[0].ts_ms);
         assert!(audit.jsonl().contains("PARSE"));
     }
 }

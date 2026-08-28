@@ -169,7 +169,7 @@ pub struct Stamps {
     pub asof_unix_ms: i64,
     pub exchange_ts_ms: Option<i64>,
     pub delayed: bool,
-    pub source: &'static str,
+    pub source: String,
 }
 
 pub struct OptionContract { /* occ, strike, right, dte, bid, ask, oi, volume */ }
@@ -177,10 +177,10 @@ pub struct Greeks { pub delta: f64, pub gamma: f64, pub theta: f64, pub vega: f6
 pub struct Policy { /* fields matching emit_policy + stamps */ }
 ```
 
-- [ ] Add modules under `crates/domain`; `#[serde(deny_unknown_fields)]` on `Policy` / ticket DTOs.
-- [ ] Config: `max_data_age_ms`, `rth_only`, `max_slippage`, `allow_live`, feature flags default false.
-- [ ] Tests: extra JSON field fails; NaN λ fails a `finite()` helper; Debug redacts keys (already exists).
-- [ ] `cargo test -p neural-router-domain --lib`
+- [x] Add modules under `crates/domain`; `#[serde(deny_unknown_fields)]` on `Policy` / ticket DTOs.
+- [x] Config: `max_data_age_ms`, `rth_only`, `max_slippage`, `allow_live`, feature flags default false.
+- [x] Tests: extra JSON field fails; NaN λ fails a `finite()` helper; Debug redacts keys (already exists).
+- [x] `cargo test -p neural-router-domain --lib`
 
 ---
 

@@ -18,22 +18,21 @@ graph TD
     A --> K[.env.example]
 
     D --> D1[loader.rs]
-    D --> D2[preprocessor.rs]
-    D --> D3[validator.rs]
+    D --> D2[snapshot.rs]
+    D --> D3[cache.rs]
 
-    E --> E1[model.rs]
-    E --> E2[train.rs]
-    E --> E3[predict.rs]
-    E --> E4[constraints.rs]
+    E --> E1[iv.rs]
+    E --> E2[funnel.rs]
+    E --> E3[band.rs]
 
-    F --> F1[alpaca.rs]
-    F --> F2[router.rs]
+    F --> F1[overlay_broker.rs]
+    F --> F2[gate.rs]
     F --> F3[risk.rs]
 
     G --> G1[src/main.rs]
 ```
 
-Dependency rule: `domain` and `config` have no crate-graph children. I/O lives behind traits (`L2Source`, `Broker`).
+Dependency rule: `domain` and `config` have no crate-graph children. I/O lives behind traits (`ChainSource`, `Broker`).
 
 ---
 
@@ -41,7 +40,7 @@ Dependency rule: `domain` and `config` have no crate-graph children. I/O lives b
 
 ### `crates/domain` (`neural-router-domain`)
 
-Shared types only: `OrderBookSnapshot`, `PriceLevel`, `Prediction`, `Side`.
+Shared overlay types: `OptionContract`, `Greeks`, `Policy`, `TicketProposal`, `NewOrder`, `Reject`.
 
 No I/O, no config, no broker types.
 
@@ -55,48 +54,29 @@ API keys are optional at load time so tests do not need credentials. `Debug` red
 
 | Module | Role |
 |--------|------|
-| `loader` | `L2Source` trait; `collect` (Polygon ingest not wired) |
-| `preprocessor` | order imbalance |
-| `validator` | depth, ordering, uncrossed spread |
-
-```bash
-cargo run -- collect --symbol SPY
-```
+| `loader` | `ChainSource`; fixture + placeholder vendor |
+| `snapshot` | `validate_chain`, `SnapshotRing` |
+| `cache` | L1 TTL + 429 negative cache |
 
 ### `crates/ml-core` (`neural-router-ml`)
 
 | Module | Role |
 |--------|------|
-| `model` | `NeuralOrderBookModel` handle |
-| `train` | training entrypoint (not wired) |
-| `predict` | inference entrypoint (not wired) |
-| `constraints` | spread ≥ 0; probabilities in `[0, 1]` |
-
-```bash
-cargo run -- train --epochs 100 --batch-size 1024
-```
+| `iv` | European BS + Newton IV |
+| `funnel` | layers 1–5 + 7; skip SVI |
+| `band` | `dollar_delta`, `band_status` |
 
 ### `crates/execution` (`neural-router-execution`)
 
 | Module | Role |
 |--------|------|
-| `alpaca` | `Broker` trait; credentials required at construct |
-| `router` | widen > 0.7 buy; narrow > 0.7 sell |
-| `risk` | 1% size, 5% daily loss halt |
-
-```python
-# equivalent decision (Rust: decide())
-if signal.spread_widening_prob > 0.7:
-    buy(risk_adjusted_size)
-elif signal.spread_narrowing_prob > 0.7:
-    sell(risk_adjusted_size)
-```
+| `overlay_broker` | `Broker`; Alpaca paper REST + mock HTTP tests |
+| `gate` | 1%/5%/over-hedge/IOC; `client_order_id` |
+| `risk` | overlay cents book |
 
 ### `crates/neural-router` (binary)
 
-Clap subcommands: `collect`, `train`, `predict`, `execute`, `backtest`.
-
-Loads `.env` in the binary only, then `Settings::from_env()`.
+Clap: `serve`. Loads `.env`, then `Settings::from_env()`. Loopback overlay API.
 
 ### Frontend
 
@@ -108,8 +88,6 @@ TypeScript dashboard. Not part of the Cargo graph.
 
 See `.env.example`. Defaults:
 
-- `ORDER_BOOK_LEVELS=10`
-- `PREDICTION_HORIZON=500` (microseconds)
 - `RISK_LIMIT_PER_TRADE=0.01`
 - `MAX_DAILY_LOSS=0.05`
 - `ALPACA_PAPER=true`

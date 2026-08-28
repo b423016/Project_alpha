@@ -19,7 +19,8 @@ fn map_serde(err: serde_json::Error) -> Reject {
 }
 
 pub fn validate_policy(raw: &str, risk: &RiskState) -> Result<Policy, Reject> {
-    let policy: Policy = serde_json::from_str(raw).map_err(map_serde)?;
+    let body = crate::extract::extract_tool_input(raw, "emit_policy")?;
+    let policy: Policy = serde_json::from_str(&body).map_err(map_serde)?;
     policy.validate_physics()?;
     let cap = (risk.equity_cents as f64 * 0.01) as i64;
     if policy.max_premium_cents > cap && cap > 0 {
@@ -34,7 +35,8 @@ pub fn validate_policy(raw: &str, risk: &RiskState) -> Result<Policy, Reject> {
 }
 
 pub fn validate_ticket(raw: &str, live: LiveRefs<'_>) -> Result<TicketProposal, Reject> {
-    let p: TicketProposal = serde_json::from_str(raw).map_err(map_serde)?;
+    let body = crate::extract::extract_tool_input(raw, "emit_ticket")?;
+    let p: TicketProposal = serde_json::from_str(&body).map_err(map_serde)?;
     p.validate_shape()?;
     if p.snapshot_id != live.top20.snapshot_id {
         return Err(Reject::new(
@@ -206,6 +208,16 @@ mod tests {
     }
 
     #[test]
+    fn v1_tool_use_envelope_validates_policy() {
+        let inner = read("policy_ok.json");
+        let envelope = format!(
+            r#"{{"content":[{{"type":"tool_use","id":"tu1","name":"emit_policy","input":{inner}}}]}}"#
+        );
+        let risk = RiskState::paper_book(1_000_000_000);
+        validate_policy(&envelope, &risk).unwrap();
+    }
+
+    #[test]
     fn golden_policy_extra_field() {
         let risk = RiskState::paper_book(1_000_000_000);
         let err = validate_policy(&read("policy_extra_field.json"), &risk).unwrap_err();
@@ -309,7 +321,7 @@ mod tests {
 
     #[test]
     fn missing_key_is_brain_down() {
-        let err = crate::PolicyError::BrainDown("missing ANTHROPIC_API_KEY").reject();
+        let err = crate::PolicyError::BrainDown("missing ANTHROPIC_API_KEY".into()).reject();
         assert_eq!(err.code, RejectCode::BrainDown);
     }
 

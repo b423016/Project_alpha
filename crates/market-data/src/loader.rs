@@ -1,15 +1,7 @@
-use neural_router_config::Settings;
-use neural_router_domain::OrderBookSnapshot;
-
 use crate::DataError;
-use crate::snapshot::RawChain;
+use crate::snapshot::{ChainSnapshot, RawChain, validate_chain};
 
-/// Boundary for an L2 feed. Polygon (or any other venue) implements this.
-pub trait L2Source {
-    fn next_snapshot(&mut self) -> Result<Option<OrderBookSnapshot>, DataError>;
-}
-
-/// Options chain source. Vendor HTTP stays behind this trait (placeholder).
+/// Options chain source. Vendor HTTP stays behind this trait.
 pub trait ChainSource {
     fn fetch(&mut self) -> Result<RawChain, DataError>;
 }
@@ -34,11 +26,8 @@ impl ChainSource for FixtureChainSource {
     }
 }
 
-pub fn collect(_settings: &Settings, symbol: &str) -> Result<(), DataError> {
-    tracing::info!(%symbol, "collector entrypoint");
-    Err(DataError::NotImplemented {
-        feature: "polygon_l2_ingest",
-    })
+pub fn ingest(src: &mut impl ChainSource, now_ms: i64) -> Result<ChainSnapshot, DataError> {
+    validate_chain(src.fetch()?, now_ms)
 }
 
 #[cfg(test)]
@@ -49,5 +38,12 @@ mod tests {
     fn placeholder_fails_closed_without_network() {
         let err = PlaceholderChainSource.fetch().unwrap_err();
         assert!(matches!(err, DataError::NotImplemented { .. }));
+    }
+
+    #[test]
+    fn ingest_fixture_is_spy_delayed() {
+        let snap = ingest(&mut FixtureChainSource, 0).unwrap();
+        assert_eq!(snap.underlying, "SPY");
+        assert!(snap.stamps.delayed);
     }
 }

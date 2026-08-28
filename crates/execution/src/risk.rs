@@ -1,18 +1,5 @@
 use neural_router_config::Settings;
-use neural_router_domain::{Reject, RejectCode, RiskState as OverlayRisk};
-
-use crate::ExecutionError;
-
-#[derive(Debug, Clone)]
-pub struct RiskState {
-    pub equity: f64,
-    pub daily_pnl: f64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct RiskDecision {
-    pub size: f64,
-}
+use neural_router_domain::{Reject, RejectCode, RiskState};
 
 #[derive(Debug, Clone)]
 pub struct RiskManager {
@@ -28,23 +15,6 @@ impl RiskManager {
         }
     }
 
-    pub fn size_for(&self, equity: f64) -> f64 {
-        (equity * self.risk_limit_per_trade).max(0.0)
-    }
-
-    pub fn check(&self, state: &RiskState) -> Result<RiskDecision, ExecutionError> {
-        if !state.equity.is_finite() || state.equity <= 0.0 {
-            return Err(ExecutionError::Risk("non-positive equity"));
-        }
-        let loss_limit = state.equity * self.max_daily_loss;
-        if state.daily_pnl.is_finite() && state.daily_pnl <= -loss_limit {
-            return Err(ExecutionError::Risk("daily loss limit"));
-        }
-        Ok(RiskDecision {
-            size: self.size_for(state.equity),
-        })
-    }
-
     pub fn overlay(risk_frac: f64, max_daily_loss: f64) -> Self {
         Self {
             risk_limit_per_trade: risk_frac,
@@ -52,8 +22,12 @@ impl RiskManager {
         }
     }
 
+    pub fn risk_frac(&self) -> f64 {
+        self.risk_limit_per_trade
+    }
+
     /// Overlay book in cents. Fail closed: breaker, equity, 5% daily loss.
-    pub fn check_overlay(&self, risk: &OverlayRisk) -> Result<(), Reject> {
+    pub fn check_overlay(&self, risk: &RiskState) -> Result<(), Reject> {
         if risk.breaker {
             return Err(Reject::new(
                 RejectCode::Breaker,
@@ -88,36 +62,29 @@ mod tests {
     use super::*;
 
     fn manager() -> RiskManager {
-        RiskManager {
-            risk_limit_per_trade: 0.01,
-            max_daily_loss: 0.05,
-        }
+        RiskManager::overlay(0.01, 0.05)
     }
 
     #[test]
-    fn sizes_at_one_percent() {
-        assert!((manager().size_for(100_000.0) - 1_000.0).abs() < 1e-9);
+    fn one_percent_from_settings() {
+        assert!((manager().risk_frac() - 0.01).abs() < 1e-12);
+        let m = RiskManager::from_settings(&neural_router_config::Settings::default());
+        assert!((m.risk_frac() - 0.01).abs() < 1e-12);
     }
 
     #[test]
     fn trips_daily_loss() {
-        let state = RiskState {
-            equity: 100_000.0,
-            daily_pnl: -5_000.0,
-        };
-        assert!(matches!(
-            manager().check(&state),
-            Err(ExecutionError::Risk("daily loss limit"))
-        ));
+        let mut state = RiskState::paper_book(10_000_000);
+        state.daily_pnl_cents = -500_000;
+        assert_eq!(
+            manager().check_overlay(&state).unwrap_err().code,
+            RejectCode::DailyLoss
+        );
     }
 
     #[test]
     fn allows_inside_limits() {
-        let state = RiskState {
-            equity: 100_000.0,
-            daily_pnl: -100.0,
-        };
-        let decision = manager().check(&state).unwrap();
-        assert!((decision.size - 1_000.0).abs() < 1e-9);
+        let state = RiskState::paper_book(10_000_000);
+        manager().check_overlay(&state).unwrap();
     }
 }
