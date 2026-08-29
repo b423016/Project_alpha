@@ -11,6 +11,7 @@ use crate::ExecutionError;
 
 pub const PAPER_BASE: &str = "https://paper-api.alpaca.markets";
 pub const LIVE_BASE: &str = "https://api.alpaca.markets";
+pub const DATA_BASE: &str = "https://data.alpaca.markets";
 
 #[derive(Debug, Clone)]
 pub struct SubmitAck {
@@ -153,6 +154,10 @@ impl AlpacaOverlay {
             .set("APCA-API-SECRET-KEY", &self.secret)
     }
 
+    pub(crate) fn headers_for(&self, req: ureq::Request) -> ureq::Request {
+        self.headers(req)
+    }
+
     /// GET /v2/account. Never logs headers. Account number is tail-only.
     pub fn account(&self) -> Result<PaperAccount, ExecutionError> {
         let url = format!("{}/v2/account", self.base);
@@ -243,6 +248,12 @@ impl Broker for AlpacaOverlay {
             }),
             Err(ureq::Error::Status(code, resp)) => {
                 let body = resp.into_string().unwrap_or_default();
+                if body.contains("client_order_id must be unique") {
+                    return Ok(SubmitAck {
+                        broker_id: order.client_order_id.clone(),
+                        duplicate: true,
+                    });
+                }
                 let snippet: String = body.chars().take(180).collect();
                 Err(ExecutionError::HttpMsg(code, snippet))
             }

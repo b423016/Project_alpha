@@ -85,7 +85,11 @@ pub fn refresh_policy(state: &AppState) {
                 if let Some(s) = snap.as_ref() {
                     let (t, ms) = neural_router_ml::decide_cpu_ms(s, p);
                     hist.record(ms as u64);
-                    *top = Some(t);
+                    if t.rows.is_empty() {
+                        tracing::warn!("strategist funnel empty — keep prior top20");
+                    } else {
+                        *top = Some(t);
+                    }
                 }
             }
             tracing::info!(policy_id = %p.policy_id.as_str(), "strategist policy accepted");
