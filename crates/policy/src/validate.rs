@@ -19,7 +19,8 @@ fn map_serde(err: serde_json::Error) -> Reject {
 }
 
 pub fn validate_policy(raw: &str, risk: &RiskState) -> Result<Policy, Reject> {
-    let policy: Policy = serde_json::from_str(raw).map_err(map_serde)?;
+    let body = crate::extract::extract_tool_input(raw, "emit_policy")?;
+    let policy: Policy = serde_json::from_str(&body).map_err(map_serde)?;
     policy.validate_physics()?;
     let cap = (risk.equity_cents as f64 * 0.01) as i64;
     if policy.max_premium_cents > cap && cap > 0 {
@@ -34,7 +35,8 @@ pub fn validate_policy(raw: &str, risk: &RiskState) -> Result<Policy, Reject> {
 }
 
 pub fn validate_ticket(raw: &str, live: LiveRefs<'_>) -> Result<TicketProposal, Reject> {
-    let p: TicketProposal = serde_json::from_str(raw).map_err(map_serde)?;
+    let body = crate::extract::extract_tool_input(raw, "emit_ticket")?;
+    let p: TicketProposal = serde_json::from_str(&body).map_err(map_serde)?;
     p.validate_shape()?;
     if p.snapshot_id != live.top20.snapshot_id {
         return Err(Reject::new(
@@ -98,6 +100,31 @@ impl LastGood {
         let p = validate_policy(raw, risk)?;
         self.policy = p;
         Ok(&self.policy)
+    }
+}
+
+/// Claude token budget. Exhaustion keeps last-good; no new ticket.
+#[derive(Debug, Clone)]
+pub struct TokenBudget {
+    pub remaining: u32,
+}
+
+impl TokenBudget {
+    pub fn new(remaining: u32) -> Self {
+        Self { remaining }
+    }
+
+    pub fn try_spend(&mut self, n: u32) -> Result<(), Reject> {
+        if self.remaining < n {
+            return Err(Reject::new(
+                RejectCode::BrainDown,
+                "tokens",
+                self.remaining.to_string(),
+                "token budget exhausted — last-good only",
+            ));
+        }
+        self.remaining -= n;
+        Ok(())
     }
 }
 
@@ -178,6 +205,16 @@ mod tests {
     fn golden_policy_ok() {
         let risk = RiskState::paper_book(1_000_000_000);
         validate_policy(&read("policy_ok.json"), &risk).unwrap();
+    }
+
+    #[test]
+    fn v1_tool_use_envelope_validates_policy() {
+        let inner = read("policy_ok.json");
+        let envelope = format!(
+            r#"{{"content":[{{"type":"tool_use","id":"tu1","name":"emit_policy","input":{inner}}}]}}"#
+        );
+        let risk = RiskState::paper_book(1_000_000_000);
+        validate_policy(&envelope, &risk).unwrap();
     }
 
     #[test]
@@ -284,7 +321,18 @@ mod tests {
 
     #[test]
     fn missing_key_is_brain_down() {
-        let err = crate::PolicyError::BrainDown("missing ANTHROPIC_API_KEY").reject();
+        let err = crate::PolicyError::BrainDown("missing ANTHROPIC_API_KEY".into()).reject();
         assert_eq!(err.code, RejectCode::BrainDown);
+    }
+
+    #[test]
+    fn token_budget_exhaust_keeps_last_good() {
+        let lg = LastGood::file_default();
+        let before = lg.policy.clone();
+        let mut budget = TokenBudget::new(1);
+        budget.try_spend(1).unwrap();
+        let err = budget.try_spend(1).unwrap_err();
+        assert_eq!(err.code, RejectCode::BrainDown);
+        assert_eq!(lg.policy, before);
     }
 }

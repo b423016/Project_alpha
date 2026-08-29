@@ -119,6 +119,7 @@ trait Broker {
 ### 3.5 `neural-router-policy`
 
 ```text
+fn extract_tool_input(raw: &str, want_name: &str) -> Result<String, Reject> // V1
 fn validate_policy(raw: &str, risk: &RiskState) -> Result<Policy, Reject>
 fn validate_ticket(raw: &str, live: LiveRefs) -> Result<TicketProposal, Reject>
 struct LiveRefs<'a> { snapshot: &'a ChainSnapshot, top20: &'a Top20, policy: &'a Policy, risk: &'a RiskState }

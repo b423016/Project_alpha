@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "L2 ingest, feature extraction, and snapshot validation"
+description = "Chain ingest, snapshot ring, L0/L1 cache"
 
 [dependencies]
 neural-router-config.workspace = true

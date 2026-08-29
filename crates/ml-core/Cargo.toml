@@ -4,10 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "GNN-transformer model, constraints, train, and predict APIs"
+description = "IV, Black–Scholes Greeks, funnel, dollar-Δ band"
 
 [dependencies]
-neural-router-config.workspace = true
 neural-router-data.workspace = true
 neural-router-domain.workspace = true
 thiserror.workspace = true

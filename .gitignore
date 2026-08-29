@@ -23,3 +23,5 @@ logs/**
 
 node_modules/
 frontend/dist/
+
+CLAUDE.local.md
