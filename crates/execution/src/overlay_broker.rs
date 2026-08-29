@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use neural_router_config::Settings;
-use neural_router_domain::{NewOrder, Reject, RejectCode, TimeInForce};
+use neural_router_domain::{NewOrder, Reject, RejectCode};
 use serde_json::json;
 
 use crate::ExecutionError;
@@ -209,10 +209,9 @@ impl PaperAccount {
 
 impl Broker for AlpacaOverlay {
     fn submit(&self, order: &NewOrder) -> Result<SubmitAck, ExecutionError> {
-        let tif = match order.tif {
-            TimeInForce::Ioc => "ioc",
-            TimeInForce::Fok => "fok",
-        };
+        // Alpaca option legs accept day; IOC/FOK is the OMS intent, EMS maps here.
+        let tif = "day";
+        let _ = order.tif;
         let limit = format!("{:.2}", order.limit_cents as f64 / 100.0);
         let url = format!("{}/v2/orders", self.base);
         let body = json!({
@@ -242,7 +241,11 @@ impl Broker for AlpacaOverlay {
                 broker_id: order.client_order_id.clone(),
                 duplicate: true,
             }),
-            Err(ureq::Error::Status(code, _)) => Err(ExecutionError::Http(code)),
+            Err(ureq::Error::Status(code, resp)) => {
+                let body = resp.into_string().unwrap_or_default();
+                let snippet: String = body.chars().take(180).collect();
+                Err(ExecutionError::HttpMsg(code, snippet))
+            }
             Err(_) => Err(ExecutionError::Http(0)),
         }
     }
@@ -435,7 +438,7 @@ mod tests {
         assert!(submit_retry(&b, &o).unwrap().duplicate);
         assert!(matches!(
             submit_retry(&b, &o),
-            Err(ExecutionError::Http(403))
+            Err(ExecutionError::Http(403) | ExecutionError::HttpMsg(403, _))
         ));
         assert_eq!(b.position("SPY260417P00500000").unwrap(), 2);
         let err = recon_position(1, b.position("SPY260417P00500000").unwrap()).unwrap_err();

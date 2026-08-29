@@ -36,6 +36,7 @@ pub struct Settings {
     pub panic_hedge: bool,
     pub allow_live: bool,
     pub anthropic_api_key: Option<String>,
+    pub anthropic_model: String,
     pub ui_token: Option<String>,
     pub audit_path: PathBuf,
     pub last_good_policy_path: PathBuf,
@@ -64,6 +65,7 @@ impl fmt::Debug for Settings {
             .field("panic_hedge", &self.panic_hedge)
             .field("allow_live", &self.allow_live)
             .field("anthropic_api_key", &redact(&self.anthropic_api_key))
+            .field("anthropic_model", &self.anthropic_model)
             .field("ui_token", &redact(&self.ui_token))
             .field("audit_path", &self.audit_path)
             .field("last_good_policy_path", &self.last_good_policy_path)
@@ -98,6 +100,7 @@ impl Default for Settings {
             panic_hedge: false,
             allow_live: false,
             anthropic_api_key: None,
+            anthropic_model: "claude-sonnet-4-5".into(),
             ui_token: None,
             audit_path: PathBuf::from("logs/audit.jsonl"),
             last_good_policy_path: PathBuf::from("logs/last_good_policy.json"),
@@ -128,6 +131,8 @@ impl Settings {
             panic_hedge: env_bool("PANIC_HEDGE", false)?,
             allow_live: env::var("ALLOW_LIVE").ok().as_deref() == Some("1"),
             anthropic_api_key: env_optional("ANTHROPIC_API_KEY"),
+            anthropic_model: env_optional("ANTHROPIC_MODEL")
+                .unwrap_or_else(|| "claude-sonnet-4-5".into()),
             ui_token: env_optional("UI_TOKEN"),
             audit_path: PathBuf::from(
                 env_optional("AUDIT_PATH").unwrap_or_else(|| "logs/audit.jsonl".into()),

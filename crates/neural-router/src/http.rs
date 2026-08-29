@@ -8,8 +8,9 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use neural_router_config::Settings;
 use neural_router_data::{ChainSnapshot, load_fixture};
-use neural_router_domain::{Policy, Top20};
-use neural_router_execution::{AlpacaOverlay, Blotter, DecideHist};
+use neural_router_domain::{Policy, RiskState, Top20};
+use neural_router_execution::{AlpacaOverlay, Blotter, DecideHist, MemoryAudit};
+use neural_router_policy::ClaudeClient;
 use serde::Serialize;
 
 #[derive(Clone)]
@@ -21,8 +22,18 @@ pub struct AppState {
     pub killed: Arc<AtomicBool>,
     pub token: Option<String>,
     pub broker: Option<Arc<AlpacaOverlay>>,
+    pub claude: Option<Arc<ClaudeClient>>,
     pub claude_configured: bool,
     pub paper: bool,
+    pub policy: Arc<Mutex<Policy>>,
+    pub risk: Arc<Mutex<RiskState>>,
+    pub audit: Arc<Mutex<MemoryAudit>>,
+    pub llm_strategist: bool,
+    pub llm_quant: bool,
+    pub rth_only: bool,
+    pub max_slippage: f64,
+    pub risk_frac: f64,
+    pub max_daily_loss: f64,
 }
 
 impl AppState {
@@ -46,8 +57,18 @@ impl AppState {
             killed: Arc::new(AtomicBool::new(false)),
             token: None,
             broker: None,
+            claude: None,
             claude_configured: false,
             paper: true,
+            policy: Arc::new(Mutex::new(Policy::file_default())),
+            risk: Arc::new(Mutex::new(RiskState::paper_book(10_000_000))),
+            audit: Arc::new(Mutex::new(MemoryAudit::default())),
+            llm_strategist: false,
+            llm_quant: false,
+            rth_only: true,
+            max_slippage: 0.03,
+            risk_frac: 0.01,
+            max_daily_loss: 0.05,
         }
     }
 
@@ -55,11 +76,29 @@ impl AppState {
         let mut s = Self::from_fixture();
         s.token = settings.ui_token.clone();
         s.paper = settings.alpaca_paper;
+        s.llm_strategist = settings.llm_strategist;
+        s.llm_quant = settings.llm_quant;
+        s.rth_only = settings.rth_only;
+        s.max_slippage = settings.max_slippage;
+        s.risk_frac = settings.risk_limit_per_trade;
+        s.max_daily_loss = settings.max_daily_loss;
         s.claude_configured = settings
             .anthropic_api_key
             .as_ref()
             .is_some_and(|k| !k.is_empty());
         s.broker = AlpacaOverlay::from_settings(settings).ok().map(Arc::new);
+        s.claude = ClaudeClient::from_settings(settings).ok().map(Arc::new);
+        if let Some(b) = &s.broker {
+            if let Ok(acct) = b.account() {
+                if let Ok(dollars) = acct.equity.parse::<f64>() {
+                    let cents = (dollars * 100.0) as i64;
+                    if let Ok(mut r) = s.risk.lock() {
+                        *r = RiskState::paper_book(cents.max(1));
+                    }
+                }
+            }
+        }
+        crate::kernel::refresh_policy(&s);
         s
     }
 
@@ -188,10 +227,12 @@ async fn chain(State(state): State<AppState>, headers: HeaderMap) -> Result<Resp
 }
 
 async fn policy(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, StatusCode> {
-    // v1 serves the active file policy; the Claude path swaps this once bit 7
-    // wires LastGood into state.
-    let p = Policy::file_default();
     auth(&state, &headers)?;
+    let p = state
+        .policy
+        .lock()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .clone();
     let etag = format!("\"{}\"", p.policy_id.as_str());
     if headers
         .get(header::IF_NONE_MATCH)
@@ -218,9 +259,12 @@ async fn agents(State(state): State<AppState>, headers: HeaderMap) -> Result<Res
         .map(|h| h.json())
         .unwrap_or_else(|_| serde_json::Value::Null);
     let body = serde_json::json!({
-        "policy": Policy::file_default(),
+        "policy": state.policy.lock().map(|g| g.clone()).unwrap_or_else(|_| Policy::file_default()),
         "decide_hist": hist,
         "killed": state.inhibit(),
+        "llm_strategist": state.llm_strategist,
+        "llm_quant": state.llm_quant,
+        "claude_configured": state.claude_configured,
     });
     let json = serde_json::to_vec(&body).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Response::builder()
@@ -236,13 +280,15 @@ async fn blotter(
     headers: HeaderMap,
 ) -> Result<Response, StatusCode> {
     auth(&state, &headers)?;
-    let n = state
+    let blot = state
         .blotter
         .lock()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .rows
-        .len();
-    let json = serde_json::json!({ "rows": n, "killed": state.inhibit() });
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let json = serde_json::json!({
+        "rows": blot.rows.len(),
+        "orders": &*blot.rows,
+        "killed": state.inhibit(),
+    });
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CACHE_CONTROL, "no-store")
@@ -299,6 +345,25 @@ async fn broker_status(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+async fn hedge(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, StatusCode> {
+    auth(&state, &headers)?;
+    let out = tokio::task::spawn_blocking(move || crate::kernel::hedge_once(&state))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let json = serde_json::to_vec(&out).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let status = if out.ok {
+        StatusCode::OK
+    } else {
+        StatusCode::CONFLICT
+    };
+    Response::builder()
+        .status(status)
+        .header(header::CACHE_CONTROL, "no-store")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(json))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
 async fn kill(State(state): State<AppState>, headers: HeaderMap) -> Result<StatusCode, StatusCode> {
     auth(&state, &headers)?;
     state.killed.store(true, Ordering::SeqCst);
@@ -344,6 +409,7 @@ pub fn router(state: AppState) -> Router {
         .route("/metrics", get(metrics))
         .route("/api/metrics", get(metrics))
         .route("/api/broker", get(broker_status))
+        .route("/api/hedge", post(hedge))
         .route("/api/kill", post(kill))
         .with_state(state)
 }
@@ -436,6 +502,26 @@ mod tests {
         let bytes = res.into_body().collect().await.unwrap().to_bytes();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("nr_decide_ms"));
+    }
+
+    #[tokio::test]
+    async fn hedge_without_broker_conflicts() {
+        let app = router(AppState::from_fixture());
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/hedge")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::CONFLICT);
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["reject"], "MISSING_CREDS");
     }
 
     #[tokio::test]

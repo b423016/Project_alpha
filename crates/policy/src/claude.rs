@@ -56,7 +56,7 @@ impl ClaudeClient {
             Some(k) if !k.is_empty() => Ok(Self {
                 key: k.clone(),
                 base: ANTHROPIC_BASE.into(),
-                model: "claude-sonnet-4-20250514".into(),
+                model: settings.anthropic_model.clone(),
             }),
             _ => Err(PolicyError::BrainDown("missing ANTHROPIC_API_KEY".into())),
         }

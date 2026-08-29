@@ -76,8 +76,21 @@ body {
 
 .badge.paper { border-color: var(--sel-bg); color: #7fa7ff; }
 
-#kill {
+#hedge {
   margin-left: auto;
+  background: transparent;
+  color: var(--up);
+  border: 1px solid var(--up);
+  font: inherit;
+  padding: 0.1rem 0.7rem;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+#hedge:hover { background: var(--up); color: #000; }
+
+#kill {
+  margin-left: 0.4rem;
   background: transparent;
   color: var(--dn);
   border: 1px solid var(--dn);

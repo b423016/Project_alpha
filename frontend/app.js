@@ -11,6 +11,7 @@ const state = {
   policy: null,
   agents: null,
   blotter: null,
+  broker: null,
   filters: { dteMin: "", dteMax: "", deltaMin: "", deltaMax: "", top20Only: true },
 };
 
@@ -85,6 +86,11 @@ function renderChrome() {
   $("c-age").textContent = formatAge(ageMs);
   const h = state.agents?.decide_hist;
   $("c-decide").textContent = h && h.n > 0 ? `~${Math.round(h.sum_ms / h.n)}ms` : "—";
+  const br = state.broker;
+  set("c-alpaca", br?.alpaca ?? "—");
+  set("c-claude", br?.claude_configured ? "on" : "off");
+  set("ov-alpaca", br ? `${br.status ?? br.alpaca} ${br.account ?? ""}` : "—");
+  set("ov-equity", br?.equity ?? "—");
   if (isKilled()) {
     msg("KILL ENGAGED — kernel refuses new tickets until restart", "err");
   }
@@ -221,11 +227,32 @@ function renderChain() {
 
 function renderBlotter() {
   const b = state.blotter;
-  if (!b) return;
   const body = $("blotter-body");
-  if (body && b.rows === 0) {
+  if (!b || !body) return;
+  const orders = b.orders ?? [];
+  if (!orders.length) {
     body.innerHTML =
-      '<tr><td colspan="8" class="dim">no orders yet — gate has not fired</td></tr>';
+      '<tr><td colspan="8" class="dim">no orders yet — press hedge or wait for a band breach</td></tr>';
+    return;
+  }
+  body.textContent = "";
+  for (const o of orders) {
+    const tr = document.createElement("tr");
+    for (const cell of [
+      "—",
+      o.client_order_id ?? "",
+      o.occ ?? "",
+      "BUY",
+      String(o.qty ?? ""),
+      "—",
+      "IOC",
+      o.state ?? "",
+    ]) {
+      const td = document.createElement("td");
+      td.textContent = cell;
+      tr.appendChild(td);
+    }
+    body.appendChild(tr);
   }
 }
 
@@ -307,6 +334,13 @@ async function refreshAll() {
     msg(`chain: ${e.message}`, "err");
   }
   try {
+    state.broker = await getJson("/api/broker");
+    renderChrome();
+    if (currentRoute() === "overview") renderOverview();
+  } catch (e) {
+    msg(`broker: ${e.message}`, "err");
+  }
+  try {
     state.blotter = await getJson("/api/blotter");
     if (currentRoute() === "blotter") renderBlotter();
   } catch (e) {
@@ -319,6 +353,25 @@ async function refreshAll() {
     if (currentRoute() === "agents" || currentRoute() === "settings") renderAgents();
   } catch (e) {
     msg(`policy/agents: ${e.message}`, "err");
+  }
+}
+
+async function doHedge() {
+  const btn = $("hedge");
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch("/api/hedge", { method: "POST", cache: "no-store" });
+    const body = await res.json();
+    await refreshAll();
+    if (body.ok) {
+      msg(`paper submit ${body.occ} qty ${body.qty} (${body.quant})`, "ok");
+    } else {
+      msg(`hedge rejected: ${body.reject ?? res.status}`, "err");
+    }
+  } catch (e) {
+    msg(`hedge failed: ${e.message}`, "err");
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -355,6 +408,7 @@ document.addEventListener("keydown", (ev) => {
 });
 
 $("kill")?.addEventListener("click", () => void doKill());
+$("hedge")?.addEventListener("click", () => void doHedge());
 
 for (const id of ["f-dte-min", "f-dte-max", "f-delta-min", "f-delta-max"]) {
   $(id)?.addEventListener("input", () => {
