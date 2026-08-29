@@ -8,4 +8,6 @@ pub enum ExecutionError {
     NotPaper,
     #[error("broker http {0}")]
     Http(u16),
+    #[error("broker http {0}: {1}")]
+    HttpMsg(u16, String),
 }

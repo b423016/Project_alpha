@@ -1,6 +1,7 @@
 use neural_router_domain::NewOrder;
+use serde::Serialize;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum OrderState {
     Submitted,
     Partial,
@@ -9,7 +10,7 @@ pub enum OrderState {
     Rejected,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct BlotterRow {
     pub client_order_id: String,
     pub occ: String,

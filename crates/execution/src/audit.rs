@@ -96,11 +96,11 @@ pub fn submit_after_audit<B: Broker>(
     match gated {
         Ok(order) => {
             audit.append(AuditEvent::accept(&order));
-            broker.submit(&order).map_err(|_| {
+            broker.submit(&order).map_err(|e| {
                 Reject::new(
                     neural_router_domain::RejectCode::BrainDown,
                     "broker",
-                    "submit",
+                    e.to_string(),
                     "ems error",
                 )
             })
