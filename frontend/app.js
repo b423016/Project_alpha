@@ -363,7 +363,9 @@ async function doHedge() {
     const res = await fetch("/api/hedge", { method: "POST", cache: "no-store" });
     const body = await res.json();
     await refreshAll();
-    if (body.ok) {
+    if (body.ok && body.duplicate) {
+      msg(`already submitted ${body.occ ?? ""} — same client_order_id (idempotent)`, "ok");
+    } else if (body.ok) {
       msg(`paper submit ${body.occ} qty ${body.qty} (${body.quant})`, "ok");
     } else {
       msg(`hedge rejected: ${body.reject ?? res.status}`, "err");

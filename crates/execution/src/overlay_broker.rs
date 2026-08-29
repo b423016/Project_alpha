@@ -335,6 +335,7 @@ mod tests {
                     let body = match code {
                         200 => r#"{"id":"br-1","status":"accepted"}"#,
                         409 => r#"{"message":"duplicate client_order_id"}"#,
+                        422 => r#"{"code":40010001,"message":"client_order_id must be unique"}"#,
                         _ => r#"{"message":"forbidden"}"#,
                     };
                     (code, body.to_string())
@@ -454,6 +455,15 @@ mod tests {
         assert_eq!(b.position("SPY260417P00500000").unwrap(), 2);
         let err = recon_position(1, b.position("SPY260417P00500000").unwrap()).unwrap_err();
         assert_eq!(err.code, RejectCode::StalePos);
+    }
+
+    #[test]
+    fn alpaca_422_unique_id_is_duplicate_not_brain_down() {
+        let base = spawn_alpaca_mock(vec![422], 0);
+        let b = AlpacaOverlay::with_base(base, "k", "s");
+        let ack = b.submit(&order("clo-dup")).unwrap();
+        assert!(ack.duplicate);
+        assert_eq!(ack.broker_id, "clo-dup");
     }
 
     #[test]
