@@ -7,9 +7,9 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use neural_router_config::Settings;
-use neural_router_data::{ChainSnapshot, load_fixture};
+use neural_router_data::{ChainSnapshot, load_fixture, validate_chain};
 use neural_router_domain::{Policy, RiskState, Top20};
-use neural_router_execution::{AlpacaOverlay, Blotter, DecideHist, MemoryAudit};
+use neural_router_execution::{AlpacaOverlay, Blotter, DecideHist, MemoryAudit, now_ms};
 use neural_router_policy::ClaudeClient;
 use serde::Serialize;
 
@@ -96,6 +96,43 @@ impl AppState {
                         *r = RiskState::paper_book(cents.max(1));
                     }
                 }
+            }
+            match b.live_spy_puts() {
+                Ok(live) => {
+                    let now = now_ms();
+                    let raw = neural_router_data::RawChain {
+                        underlying: "SPY".into(),
+                        under_price: live.under_price,
+                        asof_unix_ms: now,
+                        exchange_ts_ms: Some(now),
+                        delayed: live.delayed,
+                        source: live.source.clone(),
+                        snapshot_id: format!("snap-al{now}"),
+                        policy_id: Policy::file_default().policy_id.as_str().into(),
+                        contracts: live.contracts,
+                    };
+                    match validate_chain(raw, now) {
+                        Ok(snap) => {
+                            tracing::info!(
+                                n = snap.contracts.len(),
+                                under = snap.under_price,
+                                source = %snap.stamps.source,
+                                "live spy chain"
+                            );
+                            let (top, ms) =
+                                neural_router_ml::decide_cpu_ms(&snap, &Policy::file_default());
+                            if let Ok(mut h) = s.metrics.lock() {
+                                h.record(ms as u64);
+                            }
+                            *s.top20.lock().expect("top20") = Some(top);
+                            *s.snapshot.lock().expect("snap") = Some(snap);
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "live chain failed validation — fixture")
+                        }
+                    }
+                }
+                Err(e) => tracing::warn!(error = %e, "live chain fetch failed — fixture"),
             }
         }
         crate::kernel::refresh_policy(&s);
