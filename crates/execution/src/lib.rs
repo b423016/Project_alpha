@@ -12,6 +12,7 @@ pub use blotter::{Blotter, BlotterRow, OrderState};
 pub use error::ExecutionError;
 pub use gate::{GateLimits, client_order_id, gate, kernel_qty};
 pub use overlay_broker::{
-    AlpacaOverlay, Broker, LIVE_BASE, MockPaperBroker, PAPER_BASE, SubmitAck, recon_position,
+    AlpacaOverlay, Broker, LIVE_BASE, MockPaperBroker, PAPER_BASE, PaperAccount, SubmitAck,
+    recon_position,
 };
 pub use risk::RiskManager;

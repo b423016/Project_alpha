@@ -152,6 +152,59 @@ impl AlpacaOverlay {
         req.set("APCA-API-KEY-ID", &self.key)
             .set("APCA-API-SECRET-KEY", &self.secret)
     }
+
+    /// GET /v2/account. Never logs headers. Account number is tail-only.
+    pub fn account(&self) -> Result<PaperAccount, ExecutionError> {
+        let url = format!("{}/v2/account", self.base);
+        let req = self.headers(Self::agent().get(&url));
+        match req.call() {
+            Ok(resp) => {
+                let v: serde_json::Value = resp.into_json().unwrap_or(json!({}));
+                Ok(PaperAccount::from_json(
+                    &v,
+                    self.base.starts_with(PAPER_BASE),
+                ))
+            }
+            Err(ureq::Error::Status(code, _)) => Err(ExecutionError::Http(code)),
+            Err(_) => Err(ExecutionError::Http(0)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PaperAccount {
+    pub paper: bool,
+    pub status: String,
+    pub equity: String,
+    pub account_tail: String,
+}
+
+impl PaperAccount {
+    fn from_json(v: &serde_json::Value, paper: bool) -> Self {
+        let num = v
+            .get("account_number")
+            .and_then(|x| x.as_str())
+            .unwrap_or("");
+        let tail = if num.len() >= 4 {
+            format!("***{}", &num[num.len() - 4..])
+        } else {
+            "***".into()
+        };
+        Self {
+            paper,
+            status: v
+                .get("status")
+                .and_then(|x| x.as_str())
+                .unwrap_or("unknown")
+                .into(),
+            equity: v
+                .get("equity")
+                .and_then(|x| x.as_str())
+                .unwrap_or("0")
+                .into(),
+            account_tail: tail,
+        }
+    }
 }
 
 impl Broker for AlpacaOverlay {
@@ -233,6 +286,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::thread;
+    use std::time::Duration;
 
     use neural_router_config::Settings;
     use neural_router_domain::{OccSymbol, PolicyId, SnapshotId, TicketSide, TimeInForce};
@@ -270,6 +324,12 @@ mod tests {
                         _ => r#"{"message":"forbidden"}"#,
                     };
                     (code, body.to_string())
+                } else if head.contains("GET /v2/account") {
+                    (
+                        200,
+                        r#"{"account_number":"PA123456","status":"ACTIVE","equity":"100000"}"#
+                            .into(),
+                    )
                 } else if head.contains("GET /v2/positions/") {
                     if pos_qty == 0 {
                         (404, r#"{"message":"not found"}"#.into())
@@ -330,6 +390,17 @@ mod tests {
             AlpacaOverlay::from_settings(&Settings::default()),
             Err(ExecutionError::MissingCredentials)
         ));
+    }
+
+    #[test]
+    fn paper_account_from_loopback() {
+        let base = spawn_alpaca_mock(vec![], 0);
+        let b = AlpacaOverlay::with_base(base, "k", "s");
+        let a = b.account().unwrap();
+        assert_eq!(a.status, "ACTIVE");
+        assert_eq!(a.equity, "100000");
+        assert_eq!(a.account_tail, "***3456");
+        assert!(!format!("{a:?}").contains("PA123456"));
     }
 
     #[test]

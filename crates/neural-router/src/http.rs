@@ -6,9 +6,10 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
+use neural_router_config::Settings;
 use neural_router_data::{ChainSnapshot, load_fixture};
 use neural_router_domain::{Policy, Top20};
-use neural_router_execution::{Blotter, DecideHist};
+use neural_router_execution::{AlpacaOverlay, Blotter, DecideHist};
 use serde::Serialize;
 
 #[derive(Clone)]
@@ -19,6 +20,9 @@ pub struct AppState {
     pub metrics: Arc<Mutex<DecideHist>>,
     pub killed: Arc<AtomicBool>,
     pub token: Option<String>,
+    pub broker: Option<Arc<AlpacaOverlay>>,
+    pub claude_configured: bool,
+    pub paper: bool,
 }
 
 impl AppState {
@@ -41,7 +45,22 @@ impl AppState {
             metrics: Arc::new(Mutex::new(metrics)),
             killed: Arc::new(AtomicBool::new(false)),
             token: None,
+            broker: None,
+            claude_configured: false,
+            paper: true,
         }
+    }
+
+    pub fn from_settings(settings: &Settings) -> Self {
+        let mut s = Self::from_fixture();
+        s.token = settings.ui_token.clone();
+        s.paper = settings.alpaca_paper;
+        s.claude_configured = settings
+            .anthropic_api_key
+            .as_ref()
+            .is_some_and(|k| !k.is_empty());
+        s.broker = AlpacaOverlay::from_settings(settings).ok().map(Arc::new);
+        s
     }
 
     pub fn inhibit(&self) -> bool {
@@ -241,6 +260,45 @@ async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], body)
 }
 
+async fn broker_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, StatusCode> {
+    auth(&state, &headers)?;
+    let body = match &state.broker {
+        None => serde_json::json!({
+            "alpaca": "missing_creds",
+            "paper": state.paper,
+            "claude_configured": state.claude_configured,
+            "llm_off": true,
+        }),
+        Some(b) => match b.account() {
+            Ok(a) => serde_json::json!({
+                "alpaca": "ok",
+                "paper": a.paper,
+                "status": a.status,
+                "equity": a.equity,
+                "account": a.account_tail,
+                "base": b.base_url(),
+                "claude_configured": state.claude_configured,
+            }),
+            Err(_) => serde_json::json!({
+                "alpaca": "http_error",
+                "paper": state.paper,
+                "base": b.base_url(),
+                "claude_configured": state.claude_configured,
+            }),
+        },
+    };
+    let json = serde_json::to_vec(&body).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CACHE_CONTROL, "no-store")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(json))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
 async fn kill(State(state): State<AppState>, headers: HeaderMap) -> Result<StatusCode, StatusCode> {
     auth(&state, &headers)?;
     state.killed.store(true, Ordering::SeqCst);
@@ -285,6 +343,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/blotter", get(blotter))
         .route("/metrics", get(metrics))
         .route("/api/metrics", get(metrics))
+        .route("/api/broker", get(broker_status))
         .route("/api/kill", post(kill))
         .with_state(state)
 }
@@ -377,6 +436,25 @@ mod tests {
         let bytes = res.into_body().collect().await.unwrap().to_bytes();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("nr_decide_ms"));
+    }
+
+    #[tokio::test]
+    async fn broker_status_without_keys() {
+        let app = router(AppState::from_fixture());
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/broker")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["alpaca"], "missing_creds");
+        assert_eq!(v["claude_configured"], false);
     }
 
     #[tokio::test]
