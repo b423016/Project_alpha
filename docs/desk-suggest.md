@@ -36,7 +36,18 @@ Papers to steal **math** from, not to paste as a swarm:
 
 ---
 
-## One new page: 4 panes (page 7 — “Names”)
+## Two pages
+
+| Key | Page | Job |
+|-----|------|-----|
+| **7 Names** | 4-tile desk + scrollable universe (200–500) | Pick a name, see chart / features / bounded lean |
+| **8 Map** | How the math works + 3D/heatmap | IV surface or feature space for the **same** focused name |
+
+Same chrome. Hash `#names` / `#map`. Keys `7` / `8`.
+
+## Page 7 — Names (4 tiles + list)
+
+Left rail or top strip: searchable table of **hundreds** of Alpaca names (symbol, last, %chg, vol, Rust score). Click a row → four panes fill.
 
 Same chrome (SPY, PAPER/LIVE, AGE, KILL). Body is a **2×2** like Overview.
 
@@ -55,9 +66,44 @@ Same chrome (SPY, PAPER/LIVE, AGE, KILL). Body is a **2×2** like Overview.
 - **A** — TradingView-class chart (we can embed lightweight-charts). Patterns = **rules** (HH/HL, break of range), drawn by Rust/JS, not “AI saw a head-and-shoulders.”
 - **B** — Honest 3D/heatmap: **quoted IV vs strike/expiry** for that name’s options, or a **2D book heatmap** if we ever have L2. Fake 3D on last price is decoration; skip it.
 - **C** — Frozen feature vector from papers (returns, range, volume z, optional imbalance). **Rust.** Timestamped. No future bars.
-- **D** — Claude (slow) sees **only C + a whitelist of names**. Emits `{name, side: LONG|SHORT|HOLD, horizon_bars, conf, why}`. Rust: deny_unknown, enums, name ∈ watchlist, conf finite, **no qty**. Display only. Overlay gate does not see this.
+- **D** — Claude (slow) sees **only C for the focused name**. Emits `{name, side: LONG|SHORT|HOLD, horizon_bars, conf, why}`. Rust: deny_unknown, enums, **name ∈ live Alpaca tradable set**, conf finite, **no qty**. Display only. Overlay gate does not see this.
 
-Universe v1: **SPY, QQQ, AAPL, MSFT, NVDA, TSLA** (6 names). Not “1000 stocks.” Add a name = add to the list + tests. Alpaca IEX/indicative last is enough to **suggest**; not enough to claim DeepLOB.
+### Universe: hundreds from Alpaca, not 6 hardcoded
+
+Alpaca already is the master list: `GET /v2/assets?status=active&asset_class=us_equity`. Each row has `symbol`, `name`, `exchange`, `tradable`, `shortable`, `easy_to_borrow`, `fractionable`, `attributes` (e.g. `has_options`). Paper and live use the same shape.
+
+v1 filter (so the list is 100s of **real** names, not 8k OTC shells):
+
+- `status=active` and `tradable=true`
+- exchange ∈ `{NYSE, NASDAQ, ARCA, AMEX}` — drop OTC
+- optional: `has_options` if we want IV pane B
+- rank by **dollar volume** from batched `GET /v2/stocks/snapshots` (≤100 symbols per call) — keep **top 200–500**
+- search box over that list (type “TESL” → TSLA)
+
+That is “100s of stocks from Alpaca.” We do **not** call Claude 500 times a second. Rust scores the list (vol, range, RSI). **One** focused symbol gets pane A/C/D (and page 8).
+
+Claude bound: `name` must equal the focused symbol **and** sit in the Alpaca tradable set. A hallucinated ticker is `NOT_IN_UNIVERSE`.
+
+---
+
+## Page 8 — Map (math + 3D)
+
+Not a second buy/sell button. **Show the work** for the name selected on page 7.
+
+```
+┌──────────────────────────┬──────────────────────────┐
+│  3D / heatmap            │  Feature readout         │
+│  IV vs strike vs expiry  │  each number in C,       │
+│  or vol surface slice    │  with formula in English │
+├──────────────────────────┴──────────────────────────┤
+│  Pipeline: bars → features → (optional frozen model) → Claude suggest
+│  “stale / missing → HOLD” drawn as a real gate, not a slogan
+└─────────────────────────────────────────────────────┘
+```
+
+- **3D:** Plotly (or similar) **quoted IV** grid for that name’s options if `has_options`; else 2D heatmap of last 20×20 returns / vol. No fake spinning cube on one last price.
+- **Math panel:** each feature: name, value, units, one-line “what it means” (e.g. RSI 72 = “pushed up vs last 14 bars”).
+- Still **no** `Broker::submit` from this page.
 
 ---
 
@@ -90,6 +136,7 @@ V0 grammar (enum side) → V1 tool_use extract → V2 serde deny_unknown
 - Operator may copy a name into a **manual** ticket later; overlay HEDGE stays SPY puts.  
 - `llm_names=false` default until golden vectors exist (`crates/policy/tests/vectors/suggest_*`).  
 - Kill switch blanks D the same as it blanks new overlay tickets.
+- V4: `name` ∈ `{focused} ∩ Alpaca tradable ∩ listed universe`.
 
 ---
 
@@ -97,12 +144,13 @@ V0 grammar (enum side) → V1 tool_use extract → V2 serde deny_unknown
 
 | Slice | Ship | Proof |
 |-------|------|--------|
-| **S0** | Page 7 shell: 4 empty panes, watchlist of 6, hash `#names`, key `7` | Screenshot + route test |
-| **S1** | Pane A: last-price chart for selected name (Alpaca bars or delayed) | AAPL chart moves; SPY overlay page unchanged |
-| **S2** | Pane C: Rust features JSON `/api/names/{sym}/features` | Stale → HOLD; unit tests on RSI/returns |
-| **S3** | Pane D: Claude suggest, flags off by default; goldens; audit | `"SELL TSLA"` extra field fails; qty ignored |
-| **S4** | Pane B: IV heatmap for that name’s puts **or** skip 3D | Own `/api/names/{sym}/surface`; **not** in Claude context |
-| **S5** | (later) Offline PLR labels + frozen sklearn/lin model vs Claude; never auto-trade | Backtest with costs; if it doesn’t beat HOLD, we say so |
+| **S0** | Page 7 shell + page 8 stub; keys 7/8 | Routes exist; overlay pages unchanged |
+| **S1** | `GET /api/universe` from Alpaca assets + snapshots; table of **≥200** tradable NYSE/NASDAQ/ARCA names | Search AAPL/TSLA; OTC junk absent |
+| **S2** | Click row → pane A chart (Alpaca bars) | Chart is that symbol |
+| **S3** | Pane C: `/api/names/{sym}/features` | Stale → HOLD; RSI tests |
+| **S4** | Pane D: Claude on **focused** name only; goldens | Hallucinated ticker rejected; qty ignored |
+| **S5** | Page 8: IV heatmap + feature formulas for focused name | Surface **not** in Claude context |
+| **S6** | (later) Offline PLR vs Claude; never auto-trade | Costs in backtest; HOLD baseline |
 
 Do **not** start S5 until S3 goldens are green. Do **not** wire D to `Broker::submit`.
 
@@ -117,8 +165,8 @@ Do **not** start S5 until S3 goldens are green. Do **not** wire D to `Broker::su
 
 ---
 
-## Open choices (pick when we start S0)
+## Open choices (when we start S0)
 
-1. Page **7** vs replace Surface stub — recommend **7** so overlay Overview stays insurance.  
-2. First names: SPY+QQQ only vs +AAPL/MSFT/NVDA/TSLA.  
-3. Pane B first: IV heatmap (we already have options) vs wait for L2.
+1. Universe size: **200** vs **500** (same API; 500 = more snapshot batches). Recommend **200** first, cap 500.  
+2. Pane B on page 7: mini IV slice vs “open page 8.” Recommend page 7 pane B = last/volume spark; **3D lives on page 8**.  
+3. Shorts: only if `easy_to_borrow`; else SHORT → HOLD + reason.
