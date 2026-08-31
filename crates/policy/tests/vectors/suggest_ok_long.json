@@ -1,0 +1,7 @@
+{
+  "name": "AAPL",
+  "side": "LONG",
+  "horizon_bars": 20,
+  "conf": 0.62,
+  "why": "range_pos near high, RSI mid, positive 20b drift"
+}

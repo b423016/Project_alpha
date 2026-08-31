@@ -859,6 +859,7 @@ dependencies = [
  "criterion",
  "neural-router-data",
  "neural-router-domain",
+ "serde",
  "thiserror",
  "tracing",
 ]

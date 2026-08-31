@@ -296,7 +296,75 @@ tbody tr:hover td { background: var(--sel-bg); }
 .statusbar .msg.ok { color: var(--up); }
 
 /* ---- small screens: stack panes, keep tabs reachable ---- */
+.names-layout {
+  display: grid;
+  grid-template-columns: 16rem 1fr;
+  height: 100%;
+  min-height: 0;
+}
+
+.uni {
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0.4rem 0.5rem;
+}
+
+.uni h2 { color: var(--amber); font-size: 11px; margin: 0 0 0.35rem; letter-spacing: 0.1em; }
+
+#uni-q {
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  color: var(--txt);
+  font: inherit;
+  padding: 0.2rem 0.4rem;
+  margin-bottom: 0.3rem;
+}
+
+.uni tbody tr { cursor: pointer; }
+.uni tbody tr.on td { background: var(--hl-row); }
+.uni tbody tr.on td:first-child { border-left: 2px solid var(--amber); }
+
+.names-panes { height: 100%; min-height: 0; }
+
+#map-grid {
+  font-size: 10px;
+  white-space: pre;
+  overflow: auto;
+  max-height: 28vh;
+}
+
+/* Chart pane: canvas fills whatever space is left under the header,
+   not just a line of text sitting at the top of the box. */
+.chart-pane {
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.chart-wrap canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.chart-stats {
+  font-size: 11px;
+  padding-top: 0.35rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 900px) {
+  .names-layout { grid-template-columns: 1fr; }
   .panes { grid-template-columns: 1fr; grid-template-rows: none; height: auto; }
   .pane { max-height: 40vh; }
   .page.on { overflow-y: auto; }

@@ -33,6 +33,7 @@ pub struct Settings {
     pub rth_only: bool,
     pub llm_strategist: bool,
     pub llm_quant: bool,
+    pub llm_names: bool,
     pub panic_hedge: bool,
     pub allow_live: bool,
     pub anthropic_api_key: Option<String>,
@@ -62,6 +63,7 @@ impl fmt::Debug for Settings {
             .field("rth_only", &self.rth_only)
             .field("llm_strategist", &self.llm_strategist)
             .field("llm_quant", &self.llm_quant)
+            .field("llm_names", &self.llm_names)
             .field("panic_hedge", &self.panic_hedge)
             .field("allow_live", &self.allow_live)
             .field("anthropic_api_key", &redact(&self.anthropic_api_key))
@@ -97,6 +99,7 @@ impl Default for Settings {
             rth_only: true,
             llm_strategist: false,
             llm_quant: false,
+            llm_names: false,
             panic_hedge: false,
             allow_live: false,
             anthropic_api_key: None,
@@ -128,6 +131,7 @@ impl Settings {
             rth_only: env_bool("RTH_ONLY", true)?,
             llm_strategist: env_bool("LLM_STRATEGIST", false)?,
             llm_quant: env_bool("LLM_QUANT", false)?,
+            llm_names: env_bool("LLM_NAMES", false)?,
             panic_hedge: env_bool("PANIC_HEDGE", false)?,
             allow_live: env::var("ALLOW_LIVE").ok().as_deref() == Some("1"),
             anthropic_api_key: env_optional("ANTHROPIC_API_KEY"),
@@ -203,6 +207,7 @@ mod tests {
         assert!((settings.max_daily_loss - 0.05).abs() < 1e-12);
         assert!(!settings.llm_strategist);
         assert!(!settings.llm_quant);
+        assert!(!settings.llm_names);
         assert!(!settings.panic_hedge);
         assert!(!settings.allow_live);
         assert!(settings.alpaca_paper);

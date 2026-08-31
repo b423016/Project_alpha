@@ -120,6 +120,22 @@ fn tools_json() -> serde_json::Value {
                     "why": {"type": "string"}
                 }
             }
+        },
+        {
+            "name": "emit_suggest",
+            "description": "Emit a bounded lean on the focused equity name. Display only — never sent to Broker::submit.",
+            "input_schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "side", "horizon_bars", "conf", "why"],
+                "properties": {
+                    "name": {"type": "string"},
+                    "side": {"type": "string", "enum": ["LONG", "SHORT", "HOLD"]},
+                    "horizon_bars": {"type": "integer", "enum": [5, 20, 60]},
+                    "conf": {"type": "number"},
+                    "why": {"type": "string"}
+                }
+            }
         }
     ])
 }

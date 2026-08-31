@@ -1,0 +1,8 @@
+{
+  "name": "AAPL",
+  "side": "LONG",
+  "horizon_bars": 20,
+  "conf": 0.62,
+  "why": "model tried to size its own trade",
+  "qty": 100
+}

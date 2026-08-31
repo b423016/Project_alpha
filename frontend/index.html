@@ -31,6 +31,8 @@
     <a href="#blotter"><b>4</b>BLOTTER</a>
     <a href="#agents"><b>5</b>AGENTS</a>
     <a href="#settings"><b>6</b>RISK/SET</a>
+    <a href="#names"><b>7</b>NAMES</a>
+    <a href="#map"><b>8</b>MAP</a>
   </nav>
 
   <main>
@@ -192,6 +194,60 @@
         <div class="pane wide">
           <h2>Kill switch</h2>
           <p class="dim">POST /api/kill sets the breaker; kernel refuses every new ticket until restart. Keyboard: <span class="amber">k</span>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-names">
+      <div class="names-layout">
+        <div class="uni">
+          <h2>UNIVERSE</h2>
+          <input id="uni-q" type="search" placeholder="search AAPL TSLA…" />
+          <div class="showing" id="uni-n"></div>
+          <div class="scroll">
+            <table>
+              <thead><tr><th>SYM</th><th>LAST</th><th>VOL</th><th>EX</th></tr></thead>
+              <tbody id="uni-body"><tr><td colspan="4">loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panes names-panes">
+          <div class="pane chart-pane">
+            <h2>A · CHART <span id="nm-sym" class="dim"></span></h2>
+            <div class="chart-wrap"><canvas id="nm-chart-canvas"></canvas></div>
+            <div class="chart-stats dim" id="nm-chart-stats">select a name</div>
+          </div>
+          <div class="pane">
+            <h2>B · LAST / VOLUME</h2>
+            <div class="kv" id="nm-last"><span class="k">pick</span><span class="v">—</span></div>
+          </div>
+          <div class="pane">
+            <h2>C · FEATURES (RUST)</h2>
+            <div class="kv" id="nm-feat"><span class="k">—</span><span class="v">—</span></div>
+          </div>
+          <div class="pane">
+            <h2>D · SUGGEST (BOUNDED)</h2>
+            <p class="dim">LONG = bullish lean, SHORT = bearish lean, HOLD = no lean. Never an order — this pane cannot submit to the broker.</p>
+            <div class="kv" id="nm-sug"><span class="k">side</span><span class="v">HOLD</span></div>
+            <p class="dim" id="nm-why">empty POST → HOLD. qty is rejected. no submit from this pane.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-map">
+      <div class="panes">
+        <div class="pane">
+          <h2>HEATMAP |r| (focused name)</h2>
+          <pre id="map-grid" class="dim">open page 7 and pick a name</pre>
+        </div>
+        <div class="pane">
+          <h2>MATH READOUT</h2>
+          <div class="kv" id="map-math"><span class="k">pipeline</span><span class="v">bars → features → HOLD if stale</span></div>
+        </div>
+        <div class="pane wide">
+          <h2>GATE</h2>
+          <p class="dim">stale/missing → HOLD. LLM cannot send Broker::submit from this desk.</p>
         </div>
       </div>
     </section>

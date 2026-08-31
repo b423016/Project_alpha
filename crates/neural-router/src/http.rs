@@ -9,7 +9,9 @@ use axum::routing::{get, post};
 use neural_router_config::Settings;
 use neural_router_data::{ChainSnapshot, load_fixture, validate_chain};
 use neural_router_domain::{Policy, RiskState, Top20};
-use neural_router_execution::{AlpacaOverlay, Blotter, DecideHist, MemoryAudit, now_ms};
+use neural_router_execution::{
+    AlpacaOverlay, Blotter, DecideHist, MemoryAudit, UniverseRow, fixture_universe, now_ms,
+};
 use neural_router_policy::ClaudeClient;
 use serde::Serialize;
 
@@ -34,6 +36,8 @@ pub struct AppState {
     pub max_slippage: f64,
     pub risk_frac: f64,
     pub max_daily_loss: f64,
+    pub universe: Arc<Mutex<Vec<UniverseRow>>>,
+    pub llm_names: bool,
 }
 
 impl AppState {
@@ -69,6 +73,8 @@ impl AppState {
             max_slippage: 0.03,
             risk_frac: 0.01,
             max_daily_loss: 0.05,
+            universe: Arc::new(Mutex::new(fixture_universe())),
+            llm_names: false,
         }
     }
 
@@ -78,6 +84,7 @@ impl AppState {
         s.paper = settings.alpaca_paper;
         s.llm_strategist = settings.llm_strategist;
         s.llm_quant = settings.llm_quant;
+        s.llm_names = settings.llm_names;
         s.rth_only = settings.rth_only;
         s.max_slippage = settings.max_slippage;
         s.risk_frac = settings.risk_limit_per_trade;
@@ -134,6 +141,21 @@ impl AppState {
                 }
                 Err(e) => tracing::warn!(error = %e, "live chain fetch failed — fixture"),
             }
+            // Hundreds of names means dozens of paginated/batched Alpaca calls —
+            // too slow to block `serve` binding its listener. Screen keeps the
+            // fixture table until this lands, same fail-closed shape as any
+            // other last-good state.
+            let broker = Arc::clone(b);
+            let universe = Arc::clone(&s.universe);
+            std::thread::spawn(move || match broker.live_universe() {
+                Ok(rows) => {
+                    tracing::info!(n = rows.len(), "live Alpaca universe");
+                    if let Ok(mut u) = universe.lock() {
+                        *u = rows;
+                    }
+                }
+                Err(e) => tracing::warn!(error = %e, "live universe fetch failed — fixture"),
+            });
         }
         crate::kernel::refresh_policy(&s);
         s
@@ -158,7 +180,7 @@ struct SnapshotBody {
     asof_unix_ms: i64,
 }
 
-fn auth(state: &AppState, headers: &HeaderMap) -> Result<(), StatusCode> {
+pub(crate) fn auth(state: &AppState, headers: &HeaderMap) -> Result<(), StatusCode> {
     let Some(expect) = &state.token else {
         return Ok(());
     };
@@ -413,20 +435,29 @@ const INDEX_HTML: &str = include_str!("../../../frontend/index.html");
 const APP_JS: &str = include_str!("../../../frontend/app.js");
 const THEME_CSS: &str = include_str!("../../../frontend/theme.css");
 
-async fn index() -> Html<&'static str> {
-    Html(INDEX_HTML)
+// Static assets are compiled into the binary (`include_str!`), so a rebuild
+// changes them; without an explicit no-store the browser can keep serving a
+// stale `app.js`/`theme.css` after a redeploy with no visible sign it did.
+async fn index() -> impl IntoResponse {
+    ([(header::CACHE_CONTROL, "no-store")], Html(INDEX_HTML))
 }
 
 async fn app_js() -> impl IntoResponse {
     (
-        [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        [
+            (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         APP_JS,
     )
 }
 
 async fn theme_css() -> impl IntoResponse {
     (
-        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        [
+            (header::CONTENT_TYPE, "text/css; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         THEME_CSS,
     )
 }
@@ -448,6 +479,20 @@ pub fn router(state: AppState) -> Router {
         .route("/api/broker", get(broker_status))
         .route("/api/hedge", post(hedge))
         .route("/api/kill", post(kill))
+        .route("/api/universe", get(crate::names_http::universe))
+        .route("/api/names/{sym}/bars", get(crate::names_http::name_bars))
+        .route(
+            "/api/names/{sym}/features",
+            get(crate::names_http::name_features),
+        )
+        .route(
+            "/api/names/{sym}/surface",
+            get(crate::names_http::name_surface),
+        )
+        .route(
+            "/api/names/{sym}/suggest",
+            post(crate::names_http::name_suggest),
+        )
         .with_state(state)
 }
 
@@ -539,6 +584,115 @@ mod tests {
         let bytes = res.into_body().collect().await.unwrap().to_bytes();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("nr_decide_ms"));
+    }
+
+    #[tokio::test]
+    async fn universe_lists_at_least_200() {
+        let app = router(AppState::from_fixture());
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/universe")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let n = v["n"].as_u64().unwrap();
+        assert!(n >= 200, "n={n}");
+        let rows = v["rows"].as_array().unwrap();
+        assert!(rows.iter().any(|r| r["symbol"] == "AAPL"));
+        assert!(rows.iter().any(|r| r["symbol"] == "TSLA"));
+        assert!(rows.iter().all(|r| r["exchange"] != "OTC"));
+    }
+
+    #[tokio::test]
+    async fn names_features_and_unknown_symbol() {
+        let app = router(AppState::from_fixture());
+        let ok = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/names/AAPL/features")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(ok.status(), StatusCode::OK);
+        let bytes = ok.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["symbol"], "AAPL");
+        assert!(v["rsi_14"].as_f64().unwrap().is_finite());
+        let miss = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/names/ZZZZZZ/features")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(miss.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn suggest_qty_rejected_and_hold_default() {
+        let app = router(AppState::from_fixture());
+        let hold = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/names/AAPL/suggest")
+                    .body(Body::from(""))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(hold.status(), StatusCode::OK);
+        let bytes = hold.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["side"], "HOLD");
+        let bad = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/names/AAPL/suggest")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name":"AAPL","side":"LONG","horizon_bars":20,"conf":0.4,"why":"x","qty":9}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(bad.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let bytes = bad.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["code"], "PARSE");
+    }
+
+    #[tokio::test]
+    async fn surface_heatmap_for_focused_name() {
+        let app = router(AppState::from_fixture());
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/names/MSFT/surface")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["symbol"], "MSFT");
+        assert_eq!(v["grid"].as_array().unwrap().len(), 20);
     }
 
     #[tokio::test]

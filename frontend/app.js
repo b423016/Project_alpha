@@ -2,7 +2,7 @@
    Fail-closed in the UI too: render errors, never invent rows or numbers. */
 "use strict";
 
-const PAGES = ["overview", "chain", "surface", "blotter", "agents", "settings"];
+const PAGES = ["overview", "chain", "surface", "blotter", "agents", "settings", "names", "map"];
 
 const state = {
   snap: null,
@@ -12,6 +12,9 @@ const state = {
   agents: null,
   blotter: null,
   broker: null,
+  universe: null,
+  focused: "AAPL",
+  bars: null,
   filters: { dteMin: "", dteMax: "", deltaMin: "", deltaMax: "", top20Only: true },
 };
 
@@ -307,6 +310,240 @@ function renderAgents() {
   if (window._activeAgent) updateAgentMemory(window._activeAgent);
 }
 
+function kvRows(el, rows) {
+  if (!el) return;
+  el.innerHTML = "";
+  for (const [k, v, cls] of rows) {
+    const kk = document.createElement("span");
+    kk.className = "k";
+    kk.textContent = k;
+    const vv = document.createElement("span");
+    vv.className = `v ${cls ?? ""}`;
+    vv.textContent = v;
+    el.append(kk, vv);
+  }
+}
+
+/* Line chart on canvas, sized to fill whatever the flex box gives it —
+   not a caption-sized sparkline. Redrawn on resize/route-return since the
+   canvas has no layout while its page is display:none. */
+function drawLineChart(canvas, closes, up) {
+  const wrap = canvas.parentElement;
+  const w = wrap.clientWidth;
+  const h = wrap.clientHeight;
+  if (w < 2 || h < 2) return;
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, w, h);
+
+  const lo = Math.min(...closes);
+  const hi = Math.max(...closes);
+  const span = hi - lo || 1;
+  const pad = 4;
+  const stepX = closes.length > 1 ? (w - pad * 2) / (closes.length - 1) : 0;
+  const yFor = (c) => h - pad - ((c - lo) / span) * (h - pad * 2);
+
+  ctx.strokeStyle = "rgba(255,255,255,0.08)";
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    const y = Math.round((h / 4) * i) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+
+  const lineColor = up ? "#00ff00" : "#ff0000";
+  ctx.beginPath();
+  ctx.moveTo(pad, yFor(closes[0]));
+  closes.forEach((c, i) => ctx.lineTo(pad + i * stepX, yFor(c)));
+  ctx.lineTo(pad + (closes.length - 1) * stepX, h);
+  ctx.lineTo(pad, h);
+  ctx.closePath();
+  ctx.fillStyle = up ? "rgba(0,255,0,0.10)" : "rgba(255,0,0,0.10)";
+  ctx.fill();
+
+  ctx.beginPath();
+  closes.forEach((c, i) => {
+    const x = pad + i * stepX;
+    const y = yFor(c);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function renderChart(bars) {
+  const canvas = $("nm-chart-canvas");
+  const stats = $("nm-chart-stats");
+  if (!canvas) return;
+  if (!bars.length) {
+    if (stats) stats.textContent = "no bars";
+    return;
+  }
+  state.bars = bars;
+  const closes = bars.map((b) => b.c);
+  const last = closes[closes.length - 1];
+  const chg = closes[0] ? ((last - closes[0]) / closes[0]) * 100 : 0;
+  const hi = Math.max(...closes);
+  const lo = Math.min(...closes);
+  drawLineChart(canvas, closes, chg >= 0);
+  if (stats) {
+    stats.textContent =
+      `last ${fmt(last, 2)}  ${chg >= 0 ? "+" : ""}${fmt(chg, 2)}%  ·  hi ${fmt(hi, 2)}  lo ${fmt(lo, 2)}  (${bars.length}b)`;
+  }
+}
+
+function featureRows(f) {
+  const rows = [["status", f.stale ? "STALE — HOLD" : "live", f.stale ? "dn" : "up"]];
+  for (const c of f.cells ?? []) {
+    rows.push([`${c.name} (${c.units})`, `${fmt(c.value, 4)} — ${c.meaning}`]);
+  }
+  return rows;
+}
+
+function renderFeatures(f) {
+  kvRows($("nm-feat"), featureRows(f));
+}
+
+function renderSuggest(body, ok) {
+  const why = $("nm-why");
+  if (!ok) {
+    kvRows($("nm-sug"), [
+      ["rejected", body.code ?? "ERROR", "dn"],
+      ["field", body.field ?? "—"],
+      ["got", body.got ?? "—"],
+    ]);
+    if (why) why.textContent = "rejected — bound check failed. Never a submit either way.";
+    return;
+  }
+  const cls = body.side === "LONG" ? "up" : body.side === "SHORT" ? "dn" : "dim";
+  kvRows($("nm-sug"), [
+    ["side", body.side ?? "HOLD", cls],
+    ["horizon", `${body.horizon_bars ?? "—"} bars`],
+    ["conf", fmt(body.conf, 2)],
+  ]);
+  if (why) why.textContent = body.why ?? "";
+}
+
+/* Real |return| grid from bars, shaded by magnitude — quoted IV grid once
+   the names desk has an options chain (see surface `note`). */
+function heatmapText(grid, sym, note) {
+  if (!grid?.length) return "no data";
+  const shades = " .:-=+*#%@";
+  let max = 0;
+  for (const row of grid) for (const v of row) if (Number.isFinite(v) && v > max) max = v;
+  const lines = grid.map((row) =>
+    row
+      .map((v) => shades[Math.min(shades.length - 1, Math.floor((v / (max || 1)) * (shades.length - 1)))])
+      .join(" "),
+  );
+  return `${sym} — |return| grid, darker = bigger move\n${note ?? ""}\n\n${lines.join("\n")}`;
+}
+
+async function renderMap() {
+  const grid = $("map-grid");
+  if (!grid) return;
+  try {
+    const s = await getJson(`/api/names/${state.focused}/surface`);
+    grid.textContent = heatmapText(s.grid, s.symbol, s.note);
+    const math = $("map-math");
+    if (math) {
+      kvRows(
+        math,
+        s.features
+          ? [["symbol", s.symbol], ...featureRows(s.features)]
+          : [
+              ["symbol", s.symbol],
+              ["note", s.note ?? "—"],
+            ],
+      );
+    }
+  } catch (e) {
+    grid.textContent = `surface: ${e.message}`;
+  }
+}
+
+async function loadFocusedPanes(sym) {
+  set("nm-chart", "loading…");
+  kvRows($("nm-feat"), [["—", "loading…"]]);
+  kvRows($("nm-sug"), [["side", "loading…"]]);
+  set("nm-why", "");
+  try {
+    const b = await getJson(`/api/names/${sym}/bars`);
+    if (sym === state.focused) renderChart(b.bars ?? []);
+  } catch (e) {
+    if (sym === state.focused) set("nm-chart", `chart: ${e.message}`);
+  }
+  try {
+    const f = await getJson(`/api/names/${sym}/features`);
+    if (sym === state.focused) renderFeatures(f);
+  } catch (e) {
+    if (sym === state.focused) kvRows($("nm-feat"), [["error", e.message, "dn"]]);
+  }
+  try {
+    const res = await fetch(`/api/names/${sym}/suggest`, { method: "POST", cache: "no-store" });
+    const body = await res.json();
+    if (sym === state.focused) renderSuggest(body, res.ok);
+  } catch (e) {
+    if (sym === state.focused) kvRows($("nm-sug"), [["error", e.message, "dn"]]);
+  }
+  if (sym === state.focused && currentRoute() === "map") void renderMap();
+}
+
+function focusRow(sym) {
+  state.focused = sym;
+  const row = state.universe?.rows?.find((r) => r.symbol === sym);
+  set("nm-sym", sym);
+  if (row) {
+    kvRows($("nm-last"), [
+      ["last", `$${fmt(row.last, 2)}`],
+      ["volume", row.volume?.toLocaleString() ?? "—"],
+      ["exchange", row.exchange],
+    ]);
+  }
+  renderNames();
+  void loadFocusedPanes(sym);
+}
+
+function renderNames() {
+  const u = state.universe;
+  const body = $("uni-body");
+  if (!body) return;
+  if (!u?.rows) {
+    body.innerHTML = '<tr><td colspan="4" class="dim">universe: unavailable</td></tr>';
+    set("uni-n", "");
+    return;
+  }
+  const q = ($("uni-q")?.value ?? "").trim().toUpperCase();
+  const rows = q
+    ? u.rows.filter((r) => r.symbol.includes(q) || r.name?.toUpperCase().includes(q))
+    : u.rows;
+  set("uni-n", `showing ${rows.length} of ${u.rows.length}`);
+  body.textContent = "";
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="4" class="dim">no match</td></tr>';
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+    tr.className = r.symbol === state.focused ? "on" : "";
+    for (const cell of [r.symbol, fmt(r.last, 2), r.volume?.toLocaleString() ?? "—", r.exchange]) {
+      const td = document.createElement("td");
+      td.textContent = cell;
+      tr.appendChild(td);
+    }
+    tr.addEventListener("click", () => focusRow(r.symbol));
+    fragment.appendChild(tr);
+  }
+  body.appendChild(fragment);
+}
+
 function renderAll() {
   renderChrome();
   const r = currentRoute();
@@ -314,7 +551,18 @@ function renderAll() {
   if (r === "chain") renderChain();
   if (r === "blotter") renderBlotter();
   if (r === "agents" || r === "settings") renderAgents();
+  if (r === "names") {
+    renderNames();
+    // Canvas has zero layout while its page is display:none, so a chart
+    // fetched off-screen never got pixels — repaint from the cached bars.
+    if (state.bars) renderChart(state.bars);
+  }
+  if (r === "map") void renderMap();
 }
+
+window.addEventListener("resize", () => {
+  if (currentRoute() === "names" && state.bars) renderChart(state.bars);
+});
 
 /* ---------- data ---------- */
 
@@ -353,6 +601,12 @@ async function refreshAll() {
     if (currentRoute() === "agents" || currentRoute() === "settings") renderAgents();
   } catch (e) {
     msg(`policy/agents: ${e.message}`, "err");
+  }
+  try {
+    state.universe = await getJson("/api/universe");
+    if (currentRoute() === "names") renderNames();
+  } catch (e) {
+    msg(`universe: ${e.message}`, "err");
   }
 }
 
@@ -400,7 +654,7 @@ window.addEventListener("hashchange", () => {
 document.addEventListener("keydown", (ev) => {
   if (ev.target instanceof HTMLInputElement) return;
   const idx = Number(ev.key);
-  if (idx >= 1 && idx <= 6) {
+  if (idx >= 1 && idx <= PAGES.length) {
     ev.preventDefault();
     goto(PAGES[idx - 1]);
   } else if (ev.key === "k" || ev.key === "K") {
@@ -424,6 +678,8 @@ $("f-top20")?.addEventListener("click", () => {
   $("f-top20").classList.toggle("on", state.filters.top20Only);
   renderChain();
 });
+
+$("uni-q")?.addEventListener("input", () => renderNames());
 
 void (async () => {
   applyRoute();
