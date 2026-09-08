@@ -212,6 +212,7 @@ Quant is **asynchronous**: Policy worker may have left a ticket in the mailbox. 
 | `BRAIN_DOWN` | Policy | transport |
 | `MISSING_CREDS` | EMS | fail closed |
 | `NOT_PAPER` | EMS | live without ALLOW_LIVE |
+| `NOT_IN_UNIVERSE` | V4 names desk | symbol ∉ Alpaca tradable ∩ focused |
 
 HTTP/UI maps these to the blotter `reason` column. Do not invent new codes in bits without updating this table.
 

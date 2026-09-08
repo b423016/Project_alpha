@@ -1,0 +1,7 @@
+{
+  "name": "FAKEX",
+  "side": "LONG",
+  "horizon_bars": 20,
+  "conf": 0.9,
+  "why": "not a real Alpaca-tradable symbol"
+}

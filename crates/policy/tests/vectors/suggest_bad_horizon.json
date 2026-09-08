@@ -1,0 +1,7 @@
+{
+  "name": "AAPL",
+  "side": "SHORT",
+  "horizon_bars": 7,
+  "conf": 0.4,
+  "why": "horizon outside the allowed 5/20/60 bar set"
+}

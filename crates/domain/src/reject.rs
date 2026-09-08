@@ -22,6 +22,7 @@ pub enum RejectCode {
     BrainDown,
     MissingCreds,
     NotPaper,
+    NotInUniverse,
 }
 
 impl RejectCode {
@@ -46,6 +47,7 @@ impl RejectCode {
             Self::BrainDown => "BRAIN_DOWN",
             Self::MissingCreds => "MISSING_CREDS",
             Self::NotPaper => "NOT_PAPER",
+            Self::NotInUniverse => "NOT_IN_UNIVERSE",
         }
     }
 }

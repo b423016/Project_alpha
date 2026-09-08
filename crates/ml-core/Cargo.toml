@@ -9,6 +9,7 @@ description = "IV, Black–Scholes Greeks, funnel, dollar-Δ band"
 [dependencies]
 neural-router-data.workspace = true
 neural-router-domain.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

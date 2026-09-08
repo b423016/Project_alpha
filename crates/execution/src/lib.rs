@@ -7,6 +7,7 @@ mod error;
 mod gate;
 mod overlay_broker;
 mod risk;
+mod universe;
 
 pub use alpaca_chain::LivePuts;
 pub use audit::{AuditEvent, DecideHist, MemoryAudit, append_file, now_ms, submit_after_audit};
@@ -18,3 +19,7 @@ pub use overlay_broker::{
     SubmitAck, recon_position,
 };
 pub use risk::RiskManager;
+pub use universe::{
+    SnapQuote, UNIVERSE_CAP, UNIVERSE_MIN, UniverseRow, filter_listed, fixture_universe,
+    parse_assets_json, rank_universe,
+};
