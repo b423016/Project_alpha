@@ -8,7 +8,7 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use neural_router_config::Settings;
 use neural_router_data::{ChainSnapshot, load_fixture, validate_chain};
-use neural_router_domain::{Policy, RiskState, Top20};
+use neural_router_domain::{OptionRight, Policy, RiskState, Top20};
 use neural_router_execution::{
     AlpacaOverlay, Blotter, DecideHist, MemoryAudit, UniverseRow, fixture_universe, now_ms,
 };
@@ -285,6 +285,102 @@ async fn chain(State(state): State<AppState>, headers: HeaderMap) -> Result<Resp
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+async fn iv_surface(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, StatusCode> {
+    auth(&state, &headers)?;
+    let guard = state
+        .snapshot
+        .lock()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let Some(snap) = guard.as_ref() else {
+        return Ok((StatusCode::SERVICE_UNAVAILABLE, "STALE_DATA").into_response());
+    };
+    let s = snap.under_price;
+    let mut points = Vec::new();
+    for c in &snap.contracts {
+        if c.right != OptionRight::Put || c.dte < 7 {
+            continue;
+        }
+        let Some(mid) = c.mid() else { continue };
+        let t = f64::from(c.dte) / 365.0;
+        let Ok(iv) = neural_router_ml::implied_vol_put(s, c.strike, t, 0.04, 0.01, mid) else {
+            continue;
+        };
+        if !iv.is_finite() || iv <= 0.0 {
+            continue;
+        }
+        points.push(serde_json::json!({
+            "expiry": c.expiry,
+            "dte": c.dte,
+            "strike": c.strike,
+            "iv": iv,
+            "occ": c.occ.as_str(),
+        }));
+        if points.len() >= 400 {
+            break;
+        }
+    }
+    let mut by_exp: std::collections::BTreeMap<String, Vec<(f64, f64, u32)>> =
+        std::collections::BTreeMap::new();
+    for p in &points {
+        let exp = p["expiry"].as_str().unwrap_or("").to_string();
+        by_exp.entry(exp).or_default().push((
+            p["strike"].as_f64().unwrap_or(0.0),
+            p["iv"].as_f64().unwrap_or(0.0),
+            p["dte"].as_u64().unwrap_or(0) as u32,
+        ));
+    }
+    let mut atm = Vec::new();
+    for (exp, rows) in &by_exp {
+        let dte = rows.first().map(|r| r.2).unwrap_or(0);
+        let atm_iv = rows
+            .iter()
+            .min_by(|a, b| {
+                (a.0 - s)
+                    .abs()
+                    .partial_cmp(&(b.0 - s).abs())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|r| r.1)
+            .unwrap_or(0.0);
+        let otm = s * 0.90;
+        let otm_iv = rows
+            .iter()
+            .min_by(|a, b| {
+                (a.0 - otm)
+                    .abs()
+                    .partial_cmp(&(b.0 - otm).abs())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|r| r.1);
+        atm.push(serde_json::json!({
+            "expiry": exp,
+            "dte": dte,
+            "atm_iv": atm_iv,
+            "skew": otm_iv.map(|v| v - atm_iv),
+            "n": rows.len(),
+        }));
+    }
+    let body = serde_json::json!({
+        "underlying": snap.underlying,
+        "under_price": s,
+        "snapshot_id": snap.stamps.snapshot_id.as_str(),
+        "n": points.len(),
+        "points": points,
+        "by_expiry": atm,
+        "note": "European BS IV on put mids. Not SVI/PC2. Never sent to Claude.",
+    });
+    let json = serde_json::to_vec(&body).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CACHE_CONTROL, "no-store")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(json))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
 async fn policy(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, StatusCode> {
     auth(&state, &headers)?;
     let p = state
@@ -323,7 +419,10 @@ async fn agents(State(state): State<AppState>, headers: HeaderMap) -> Result<Res
         "killed": state.inhibit(),
         "llm_strategist": state.llm_strategist,
         "llm_quant": state.llm_quant,
+        "llm_names": state.llm_names,
         "claude_configured": state.claude_configured,
+        "paper": state.paper,
+        "rth_only": state.rth_only,
     });
     let json = serde_json::to_vec(&body).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Response::builder()
@@ -473,6 +572,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/policy", get(policy))
         .route("/api/agents", get(agents))
         .route("/api/top20", get(top20))
+        .route("/api/surface", get(iv_surface))
         .route("/api/blotter", get(blotter))
         .route("/metrics", get(metrics))
         .route("/api/metrics", get(metrics))
@@ -584,6 +684,26 @@ mod tests {
         let bytes = res.into_body().collect().await.unwrap().to_bytes();
         let body = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(body.contains("nr_decide_ms"));
+    }
+
+    #[tokio::test]
+    async fn spy_iv_surface_has_points() {
+        let app = router(AppState::from_fixture());
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/surface")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(v["n"].as_u64().unwrap() > 0);
+        assert!(!v["by_expiry"].as_array().unwrap().is_empty());
+        assert_eq!(v["underlying"], "SPY");
     }
 
     #[tokio::test]

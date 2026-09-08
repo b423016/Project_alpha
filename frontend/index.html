@@ -106,12 +106,22 @@
 
     <!-- 3 SURFACE: own HTTP, never in Claude context -->
     <section class="page" id="page-surface">
-      <h2 style="color:var(--amber)">IV SURFACE</h2>
-      <div class="stub">3D mesh + PCA/SVI residual heatmap land in spiral 4 (SVI/PC2 is out of the first 8 bits). This page never enters Claude context.</div>
-      <table id="surface-mini">
-        <thead><tr><th>EXP</th><th>ATM IV</th><th>SKEW (25Δ−50Δ)</th></tr></thead>
-        <tbody><tr><td colspan="3" class="dim">from chain snapshot below, once funnel exposes it</td></tr></tbody>
-      </table>
+      <div class="panes">
+        <div class="pane">
+          <h2>IV HEATMAP (PUT MIDS → BS)</h2>
+          <div class="chart-wrap"><canvas id="surf-canvas"></canvas></div>
+          <p class="dim" id="surf-note">European BS on put mids. Not SVI. Never in Claude context.</p>
+        </div>
+        <div class="pane">
+          <h2>ATM IV BY EXPIRY</h2>
+          <div class="scroll">
+            <table>
+              <thead><tr><th>EXP</th><th>DTE</th><th>ATM IV</th><th>SKEW ~90%</th><th>N</th></tr></thead>
+              <tbody id="surf-body"><tr><td colspan="5">loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- 4 BLOTTER -->
@@ -189,6 +199,9 @@
             <span class="k">source</span><span class="v" id="set-source">—</span>
             <span class="k">mode</span><span class="v up">PAPER (live needs ALLOW_LIVE=1 + ALPACA_PAPER=false)</span>
             <span class="k">stale alert</span><span class="v" id="set-stale">—</span>
+            <span class="k">LLM_STRATEGIST</span><span class="v" id="set-llm-s">—</span>
+            <span class="k">LLM_QUANT</span><span class="v" id="set-llm-q">—</span>
+            <span class="k">LLM_NAMES</span><span class="v" id="set-llm-n">—</span>
           </div>
         </div>
         <div class="pane wide">
@@ -237,17 +250,18 @@
 
     <section class="page" id="page-map">
       <div class="panes">
-        <div class="pane">
-          <h2>HEATMAP |r| (focused name)</h2>
-          <pre id="map-grid" class="dim">open page 7 and pick a name</pre>
+        <div class="pane chart-pane">
+          <h2>HEATMAP |r| <span id="map-sym" class="dim"></span></h2>
+          <div class="chart-wrap"><canvas id="map-canvas"></canvas></div>
+          <p class="dim" id="map-note">bars → |log return| grid. Darker = bigger move.</p>
         </div>
         <div class="pane">
           <h2>MATH READOUT</h2>
-          <div class="kv" id="map-math"><span class="k">pipeline</span><span class="v">bars → features → HOLD if stale</span></div>
+          <div class="kv" id="map-math"><span class="k">pipeline</span><span class="v">bars → features → HOLD if stale → Claude lean</span></div>
         </div>
         <div class="pane wide">
           <h2>GATE</h2>
-          <p class="dim">stale/missing → HOLD. LLM cannot send Broker::submit from this desk.</p>
+          <p class="dim">stale/missing → HOLD. This desk never calls Broker::submit. Pick a name on tab 7; this page uses the same focused symbol.</p>
         </div>
       </div>
     </section>

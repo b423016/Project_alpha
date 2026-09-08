@@ -105,7 +105,13 @@ function renderOverview() {
   set("ov-snapshot", s.snapshot_id ?? "—");
   set("ov-under-price", fmt(s.under_price, 2));
   // Book $Δ needs the position feed (Alpaca recon bit); never fake it.
-  set("ov-band", "pending position feed");
+  const pick0 = state.top20?.rows?.[0];
+  if (pick0?.greeks && Number.isFinite(s.under_price)) {
+    const d1 = Math.abs(pick0.greeks.delta) * 100 * s.under_price;
+    set("ov-band", `1-lot pick Δ$ ${d1.toFixed(0)} (book pending)`);
+  } else {
+    set("ov-band", "pending position feed");
+  }
   const killed = isKilled();
   set("ov-posture", killed ? "KILLED" : "HOLD");
   const k = $("ov-killed");
@@ -233,6 +239,16 @@ function renderBlotter() {
   const body = $("blotter-body");
   if (!b || !body) return;
   const orders = b.orders ?? [];
+  const pick = state.top20?.rows?.[0];
+  const draft = $("blot-draft");
+  if (draft && pick) {
+    kvRows(draft, [
+      ["occ", pick.contract?.occ ?? "—"],
+      ["Δ", fmt(pick.greeks?.delta, 3)],
+      ["mid", fmt(((pick.contract?.bid ?? 0) + (pick.contract?.ask ?? 0)) / 2, 2)],
+      ["status", "press HEDGE to send paper (gate still owns submit)"],
+    ]);
+  }
   if (!orders.length) {
     body.innerHTML =
       '<tr><td colspan="8" class="dim">no orders yet — press hedge or wait for a band breach</td></tr>';
@@ -306,6 +322,15 @@ function renderAgents() {
     set("ag-sum", String(h.sum_ms ?? 0));
   }
   set("set-source", state.snap?.source ?? "—");
+  const on = (v) => (v ? "on" : "off");
+  set("set-llm-s", on(state.agents?.llm_strategist));
+  set("set-llm-q", on(state.agents?.llm_quant));
+  set("set-llm-n", on(state.agents?.llm_names));
+  const ageMs =
+    typeof state.snap?.asof_unix_ms === "number"
+      ? Math.max(0, Date.now() - state.snap.asof_unix_ms)
+      : null;
+  set("set-stale", ageMs == null ? "—" : ageMs > 900_000 ? "STALE" : "ok");
 
   if (window._activeAgent) updateAgentMemory(window._activeAgent);
 }
@@ -445,12 +470,84 @@ function heatmapText(grid, sym, note) {
   return `${sym} — |return| grid, darker = bigger move\n${note ?? ""}\n\n${lines.join("\n")}`;
 }
 
+function drawHeatmap(canvas, grid) {
+  const wrap = canvas.parentElement;
+  const w = wrap?.clientWidth || 320;
+  const h = wrap?.clientHeight || 220;
+  if (w < 2 || h < 2) return;
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx || !grid?.length) return;
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, w, h);
+  const rows = grid.length;
+  const cols = grid[0].length || 1;
+  let max = 0;
+  for (const row of grid) for (const v of row) if (Number.isFinite(v) && v > max) max = v;
+  const cw = w / cols;
+  const ch = h / rows;
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const t = max > 0 ? grid[i][j] / max : 0;
+      const r = Math.round(255 * t);
+      const g = Math.round(160 * (1 - t));
+      ctx.fillStyle = `rgb(${r},${g},0)`;
+      ctx.fillRect(j * cw, i * ch, cw + 0.5, ch + 0.5);
+    }
+  }
+}
+
+function ivGridFromPoints(points) {
+  const exps = [...new Set(points.map((p) => p.expiry))].sort();
+  const strikes = [...new Set(points.map((p) => p.strike))].sort((a, b) => a - b);
+  if (!exps.length || !strikes.length) return [];
+  const takeS = strikes.length > 24 ? strikes.filter((_, i) => i % Math.ceil(strikes.length / 24) === 0) : strikes;
+  const takeE = exps.length > 12 ? exps.filter((_, i) => i % Math.ceil(exps.length / 12) === 0) : exps;
+  const lookup = new Map(points.map((p) => [`${p.expiry}|${p.strike}`, p.iv]));
+  return takeE.map((e) => takeS.map((k) => lookup.get(`${e}|${k}`) ?? 0));
+}
+
+async function renderSurface() {
+  const body = $("surf-body");
+  if (!body) return;
+  try {
+    const s = await getJson("/api/surface");
+    set("surf-note", `${s.note ?? ""} · ${s.n ?? 0} pts · ${s.underlying} ${fmt(s.under_price, 2)}`);
+    body.textContent = "";
+    for (const r of s.by_expiry ?? []) {
+      const tr = document.createElement("tr");
+      for (const cell of [
+        r.expiry,
+        String(r.dte),
+        fmt(r.atm_iv, 3),
+        r.skew == null ? "—" : fmt(r.skew, 3),
+        String(r.n),
+      ]) {
+        const td = document.createElement("td");
+        td.textContent = cell;
+        tr.appendChild(td);
+      }
+      body.appendChild(tr);
+    }
+    if (!(s.by_expiry ?? []).length) {
+      body.innerHTML = '<tr><td colspan="5" class="dim">no IV points</td></tr>';
+    }
+    const canvas = $("surf-canvas");
+    if (canvas && s.points) drawHeatmap(canvas, ivGridFromPoints(s.points));
+  } catch (e) {
+    if (body) body.innerHTML = `<tr><td colspan="5" class="err">${e.message}</td></tr>`;
+  }
+}
+
 async function renderMap() {
-  const grid = $("map-grid");
-  if (!grid) return;
+  const canvas = $("map-canvas");
+  const note = $("map-note");
+  set("map-sym", state.focused);
   try {
     const s = await getJson(`/api/names/${state.focused}/surface`);
-    grid.textContent = heatmapText(s.grid, s.symbol, s.note);
+    if (note) note.textContent = s.note ?? "";
+    if (canvas) drawHeatmap(canvas, s.grid ?? []);
     const math = $("map-math");
     if (math) {
       kvRows(
@@ -464,12 +561,12 @@ async function renderMap() {
       );
     }
   } catch (e) {
-    grid.textContent = `surface: ${e.message}`;
+    if (note) note.textContent = `surface: ${e.message}`;
   }
 }
 
 async function loadFocusedPanes(sym) {
-  set("nm-chart", "loading…");
+  set("nm-chart-stats", "loading…");
   kvRows($("nm-feat"), [["—", "loading…"]]);
   kvRows($("nm-sug"), [["side", "loading…"]]);
   set("nm-why", "");
@@ -477,7 +574,7 @@ async function loadFocusedPanes(sym) {
     const b = await getJson(`/api/names/${sym}/bars`);
     if (sym === state.focused) renderChart(b.bars ?? []);
   } catch (e) {
-    if (sym === state.focused) set("nm-chart", `chart: ${e.message}`);
+    if (sym === state.focused) set("nm-chart-stats", `chart: ${e.message}`);
   }
   try {
     const f = await getJson(`/api/names/${sym}/features`);
@@ -549,6 +646,7 @@ function renderAll() {
   const r = currentRoute();
   if (r === "overview") renderOverview();
   if (r === "chain") renderChain();
+  if (r === "surface") void renderSurface();
   if (r === "blotter") renderBlotter();
   if (r === "agents" || r === "settings") renderAgents();
   if (r === "names") {
@@ -604,7 +702,15 @@ async function refreshAll() {
   }
   try {
     state.universe = await getJson("/api/universe");
-    if (currentRoute() === "names") renderNames();
+    if (!state.universe?.rows?.some((r) => r.symbol === state.focused)) {
+      state.focused = state.universe?.rows?.[0]?.symbol ?? "AAPL";
+    }
+    if (currentRoute() === "names") {
+      renderNames();
+      void loadFocusedPanes(state.focused);
+    }
+    if (currentRoute() === "map") void renderMap();
+    if (currentRoute() === "surface") void renderSurface();
   } catch (e) {
     msg(`universe: ${e.message}`, "err");
   }

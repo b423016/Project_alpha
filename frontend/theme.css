@@ -344,7 +344,13 @@ tbody tr:hover td { background: var(--sel-bg); }
 
 .chart-wrap {
   flex: 1;
-  min-height: 0;
+  min-height: 140px;
+  position: relative;
+}
+
+.chart-wrap {
+  flex: 1;
+  min-height: 140px;
   position: relative;
 }
 
