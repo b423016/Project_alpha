@@ -348,18 +348,14 @@ tbody tr:hover td { background: var(--sel-bg); }
   position: relative;
 }
 
-.chart-wrap {
-  flex: 1;
-  min-height: 140px;
-  position: relative;
-}
-
 .chart-wrap canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
 }
+
+.chart-wrap.tall { min-height: 220px; }
 
 .chart-stats {
   font-size: 11px;
@@ -395,6 +391,8 @@ tbody tr:hover td { background: var(--sel-bg); }
 .node { position: absolute; padding: 0.5rem 1rem; background: var(--bg); border: 1px solid var(--amber); border-radius: 4px; color: var(--txt); cursor: pointer; text-align: center; width: 120px; box-shadow: 0 0 5px rgba(255,159,28,0.2); transition: all 0.2s; }
 .node:hover { background: var(--sel-bg); box-shadow: 0 0 10px rgba(255,159,28,0.5); }
 .node.active { background: var(--amber); color: #000; font-weight: bold; }
+.node.hot { box-shadow: 0 0 12px rgba(255,159,28,0.7); border-color: var(--txt); }
+.node.hot:not(.active)::after { content: " ●"; color: var(--up); }
 .node.top { top: 0; left: calc(50% - 60px); }
 .node.mid-left { top: 100px; left: 10%; }
 .node.mid-right { top: 100px; right: 10%; }

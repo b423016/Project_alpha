@@ -160,18 +160,18 @@
           </div>
         </div>
         <div class="agent-memory-panel pane" id="agent-memory-panel">
-          <h2 id="mem-title">Select an agent</h2>
+          <h2 id="mem-title">Strategist (LLM)</h2>
           <div class="mem-section">
             <h4>Private Pad (CoT)</h4>
-            <pre id="mem-pad" class="dim">...</pre>
+            <pre id="mem-pad" class="dim">loading kernel seats…</pre>
           </div>
           <div class="mem-section">
             <h4>Department Blackboard</h4>
-            <pre id="mem-board" class="dim">...</pre>
+            <pre id="mem-board" class="dim">loading…</pre>
           </div>
           <div class="mem-section">
             <h4>Audit Ledger</h4>
-            <pre id="mem-audit" class="dim">...</pre>
+            <pre id="mem-audit" class="dim">loading…</pre>
           </div>
         </div>
         <div class="pane wide">
@@ -252,16 +252,17 @@
       <div class="panes">
         <div class="pane chart-pane">
           <h2>HEATMAP |r| <span id="map-sym" class="dim"></span></h2>
-          <div class="chart-wrap"><canvas id="map-canvas"></canvas></div>
-          <p class="dim" id="map-note">bars → |log return| grid. Darker = bigger move.</p>
+          <label class="dim">name <input id="map-q" type="search" placeholder="AAPL" style="width:6rem" /></label>
+          <div class="chart-wrap tall"><canvas id="map-canvas"></canvas></div>
+          <p class="dim" id="map-note">loading…</p>
         </div>
         <div class="pane">
           <h2>MATH READOUT</h2>
-          <div class="kv" id="map-math"><span class="k">pipeline</span><span class="v">bars → features → HOLD if stale → Claude lean</span></div>
+          <div class="kv" id="map-math"><span class="k">status</span><span class="v">loading…</span></div>
         </div>
         <div class="pane wide">
-          <h2>GATE</h2>
-          <p class="dim">stale/missing → HOLD. This desk never calls Broker::submit. Pick a name on tab 7; this page uses the same focused symbol.</p>
+          <h2>GATE (focused name from tab 7)</h2>
+          <div class="kv" id="map-gate"><span class="k">status</span><span class="v">loading…</span></div>
         </div>
       </div>
     </section>

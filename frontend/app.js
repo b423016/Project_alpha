@@ -4,6 +4,24 @@
 
 const PAGES = ["overview", "chain", "surface", "blotter", "agents", "settings", "names", "map"];
 
+function readFocused() {
+  try {
+    const s = sessionStorage.getItem("nr_focused");
+    if (s && /^[A-Z.]{1,8}$/.test(s)) return s;
+  } catch {
+    /* private mode */
+  }
+  return "AAPL";
+}
+
+function writeFocused(sym) {
+  try {
+    sessionStorage.setItem("nr_focused", sym);
+  } catch {
+    /* private mode */
+  }
+}
+
 const state = {
   snap: null,
   chain: null,
@@ -13,7 +31,11 @@ const state = {
   blotter: null,
   broker: null,
   universe: null,
-  focused: "AAPL",
+  focused: readFocused(),
+  mapGrid: null,
+  mapSym: null,
+  lastFeatures: null,
+  lastSuggest: null,
   bars: null,
   filters: { dteMin: "", dteMax: "", deltaMin: "", deltaMax: "", top20Only: true },
 };
@@ -61,6 +83,11 @@ function applyRoute() {
   document.querySelectorAll("#tabs a").forEach((a) => {
     a.classList.toggle("on", a.getAttribute("href") === `#${route}`);
   });
+}
+
+/* Pages use display:none; canvases have 0 layout until two frames after .on. */
+function afterLayout(fn) {
+  requestAnimationFrame(() => requestAnimationFrame(fn));
 }
 
 function goto(route) {
@@ -320,6 +347,11 @@ function renderAgents() {
     });
     set("ag-n", String(h.n ?? 0));
     set("ag-sum", String(h.sum_ms ?? 0));
+  } else if (hist && labels) {
+    hist.innerHTML = '<div class="dim">no decide_ms samples yet</div>';
+    labels.innerHTML = "";
+    set("ag-n", "0");
+    set("ag-sum", "0");
   }
   set("set-source", state.snap?.source ?? "—");
   const on = (v) => (v ? "on" : "off");
@@ -332,7 +364,11 @@ function renderAgents() {
       : null;
   set("set-stale", ageMs == null ? "—" : ageMs > 900_000 ? "STALE" : "ok");
 
-  if (window._activeAgent) updateAgentMemory(window._activeAgent);
+  paintAgentNodes();
+  if (!window._activeAgent) selectAgent("strategist");
+  else updateAgentMemory(window._activeAgent);
+  if (currentRoute() === "agents") startAgentGraph();
+  else stopAgentGraph();
 }
 
 function kvRows(el, rows) {
@@ -354,8 +390,8 @@ function kvRows(el, rows) {
    canvas has no layout while its page is display:none. */
 function drawLineChart(canvas, closes, up) {
   const wrap = canvas.parentElement;
-  const w = wrap.clientWidth;
-  const h = wrap.clientHeight;
+  const w = Math.max(wrap?.clientWidth || 0, 240);
+  const h = Math.max(wrap?.clientHeight || 0, 140);
   if (w < 2 || h < 2) return;
   canvas.width = w;
   canvas.height = h;
@@ -472,9 +508,8 @@ function heatmapText(grid, sym, note) {
 
 function drawHeatmap(canvas, grid) {
   const wrap = canvas.parentElement;
-  const w = wrap?.clientWidth || 320;
-  const h = wrap?.clientHeight || 220;
-  if (w < 2 || h < 2) return;
+  const w = Math.max(wrap?.clientWidth || 0, 240);
+  const h = Math.max(wrap?.clientHeight || 0, 180);
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d");
@@ -540,28 +575,67 @@ async function renderSurface() {
   }
 }
 
-async function renderMap() {
+function paintMapPanels(s) {
   const canvas = $("map-canvas");
   const note = $("map-note");
+  const feat = s?.features ?? state.lastFeatures;
+  const stale = Boolean(feat?.stale) || !feat;
+  const lean = state.lastSuggest;
+  if (note && s) {
+    note.textContent = `${s.symbol} · ${s.kind ?? "heatmap"} · ${s.note ?? ""}`;
+  }
+  if (canvas && state.mapGrid?.length) drawHeatmap(canvas, state.mapGrid);
+  kvRows(
+    $("map-math"),
+    feat
+      ? [["symbol", feat.symbol ?? state.focused], ...featureRows(feat)]
+      : [
+          ["symbol", state.focused],
+          ["grid", `${(state.mapGrid ?? []).length}×${(state.mapGrid?.[0] ?? []).length}`],
+        ],
+  );
+  kvRows($("map-gate"), [
+    ["name", state.focused, "up"],
+    ["picked", "tab 7 Names — already focused, no re-pick"],
+    ["bars → features", feat ? (stale ? "STALE → HOLD" : "ok") : "loading…", stale ? "dn" : "up"],
+    ["rsi_14", feat ? fmt(feat.rsi_14, 1) : "—"],
+    ["range_pos", feat ? fmt(feat.range_pos, 2) : "—"],
+    ["lean (not an order)", lean ? `${lean.side ?? "HOLD"} conf ${fmt(lean.conf, 2)}` : "from pane D"],
+    ["Broker::submit", "blocked — Map never sends"],
+  ]);
+}
+
+async function renderMap() {
+  const q = $("map-q");
+  if (q && document.activeElement !== q) q.value = state.focused;
   set("map-sym", state.focused);
+  if (state.mapSym === state.focused && state.mapGrid?.length) paintMapPanels({
+    symbol: state.focused,
+    kind: "return_abs_heatmap",
+    features: state.lastFeatures,
+    note: "cached from tab 7",
+  });
+  else {
+    kvRows($("map-gate"), [
+      ["name", state.focused, "up"],
+      ["status", "loading surface…"],
+    ]);
+  }
   try {
     const s = await getJson(`/api/names/${state.focused}/surface`);
-    if (note) note.textContent = s.note ?? "";
-    if (canvas) drawHeatmap(canvas, s.grid ?? []);
-    const math = $("map-math");
-    if (math) {
-      kvRows(
-        math,
-        s.features
-          ? [["symbol", s.symbol], ...featureRows(s.features)]
-          : [
-              ["symbol", s.symbol],
-              ["note", s.note ?? "—"],
-            ],
-      );
-    }
+    if (s.symbol && s.symbol !== state.focused) return;
+    state.mapGrid = s.grid ?? [];
+    state.mapSym = s.symbol ?? state.focused;
+    if (s.features) state.lastFeatures = s.features;
+    paintMapPanels(s);
   } catch (e) {
-    if (note) note.textContent = `surface: ${e.message}`;
+    const note = $("map-note");
+    if (note) note.textContent = `map: ${e.message}`;
+    kvRows($("map-gate"), [
+      ["name", state.focused],
+      ["error", e.message, "dn"],
+      ["hint", "name must be in the tab 7 universe"],
+    ]);
   }
 }
 
@@ -578,24 +652,41 @@ async function loadFocusedPanes(sym) {
   }
   try {
     const f = await getJson(`/api/names/${sym}/features`);
-    if (sym === state.focused) renderFeatures(f);
+    if (sym === state.focused) {
+      state.lastFeatures = f;
+      renderFeatures(f);
+    }
   } catch (e) {
     if (sym === state.focused) kvRows($("nm-feat"), [["error", e.message, "dn"]]);
   }
   try {
     const res = await fetch(`/api/names/${sym}/suggest`, { method: "POST", cache: "no-store" });
     const body = await res.json();
-    if (sym === state.focused) renderSuggest(body, res.ok);
+    if (sym === state.focused) {
+      if (res.ok) state.lastSuggest = body;
+      renderSuggest(body, res.ok);
+    }
   } catch (e) {
     if (sym === state.focused) kvRows($("nm-sug"), [["error", e.message, "dn"]]);
+  }
+  try {
+    const s = await getJson(`/api/names/${sym}/surface`);
+    if (sym === state.focused) {
+      state.mapGrid = s.grid ?? [];
+      state.mapSym = s.symbol ?? sym;
+      if (s.features) state.lastFeatures = s.features;
+    }
+  } catch {
+    /* Map will retry on its own tab. */
   }
   if (sym === state.focused && currentRoute() === "map") void renderMap();
 }
 
 function focusRow(sym) {
-  state.focused = sym;
-  const row = state.universe?.rows?.find((r) => r.symbol === sym);
-  set("nm-sym", sym);
+  state.focused = String(sym || "AAPL").toUpperCase();
+  writeFocused(state.focused);
+  const row = state.universe?.rows?.find((r) => r.symbol === state.focused);
+  set("nm-sym", state.focused);
   if (row) {
     kvRows($("nm-last"), [
       ["last", `$${fmt(row.last, 2)}`],
@@ -604,7 +695,7 @@ function focusRow(sym) {
     ]);
   }
   renderNames();
-  void loadFocusedPanes(sym);
+  void loadFocusedPanes(state.focused);
 }
 
 function renderNames() {
@@ -646,20 +737,32 @@ function renderAll() {
   const r = currentRoute();
   if (r === "overview") renderOverview();
   if (r === "chain") renderChain();
-  if (r === "surface") void renderSurface();
+  if (r === "surface") {
+    void renderSurface();
+    afterLayout(() => void renderSurface());
+  }
   if (r === "blotter") renderBlotter();
   if (r === "agents" || r === "settings") renderAgents();
   if (r === "names") {
     renderNames();
-    // Canvas has zero layout while its page is display:none, so a chart
-    // fetched off-screen never got pixels — repaint from the cached bars.
-    if (state.bars) renderChart(state.bars);
+    afterLayout(() => {
+      if (state.bars) renderChart(state.bars);
+    });
   }
-  if (r === "map") void renderMap();
+  if (r === "map") {
+    void renderMap();
+    afterLayout(() => {
+      if (state.mapGrid?.length) drawHeatmap($("map-canvas"), state.mapGrid);
+    });
+  }
+  if (r !== "agents") stopAgentGraph();
 }
 
 window.addEventListener("resize", () => {
-  if (currentRoute() === "names" && state.bars) renderChart(state.bars);
+  const r = currentRoute();
+  if (r === "names" && state.bars) renderChart(state.bars);
+  if (r === "map" && state.mapGrid?.length) drawHeatmap($("map-canvas"), state.mapGrid);
+  if (r === "surface") void renderSurface();
 });
 
 /* ---------- data ---------- */
@@ -702,8 +805,10 @@ async function refreshAll() {
   }
   try {
     state.universe = await getJson("/api/universe");
-    if (!state.universe?.rows?.some((r) => r.symbol === state.focused)) {
+    const inUni = state.universe?.rows?.some((r) => r.symbol === state.focused);
+    if (!inUni && !state.focused) {
       state.focused = state.universe?.rows?.[0]?.symbol ?? "AAPL";
+      writeFocused(state.focused);
     }
     if (currentRoute() === "names") {
       renderNames();
@@ -787,9 +892,18 @@ $("f-top20")?.addEventListener("click", () => {
 
 $("uni-q")?.addEventListener("input", () => renderNames());
 
+$("map-q")?.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Enter") return;
+  const sym = ev.target.value.trim().toUpperCase();
+  if (!sym) return;
+  focusRow(sym);
+  void renderMap();
+});
+
 void (async () => {
   applyRoute();
   await refreshAll();
+  if (state.focused) void loadFocusedPanes(state.focused);
   renderAll();
   setInterval(() => void refreshAll(), 30000);
 })();
@@ -799,112 +913,246 @@ void (async () => {
 
 window._activeAgent = null;
 
-function updateAgentMemory(agentId) {
-  const titles = {
-    ceo: "CEO",
-    strategist: "Strategist (LLM)",
-    quant: "Quant (LLM)",
-    risk: "Risk Machine",
-    exec: "Executor"
-  };
-  set("mem-title", titles[agentId] || agentId);
-  
-  let pad = "No CoT recorded.";
-  let board = "No blackboard data.";
-  let audit = "No recent actions.";
-  
-  if (agentId === "strategist" && state.policy) {
-    board = JSON.stringify(state.policy, null, 2);
-    pad = "Analyzing VIX and delta bounds... Determined expanding regime is appropriate.";
-    audit = "Accepted policy at " + new Date().toISOString();
-  } else if (agentId === "quant" && state.top20) {
-    pad = "Awaiting band breach. Top 20 loaded.";
-    if (state.blotter && state.blotter.rows > 0) {
-      board = "Proposed ticket on breach.";
+const AGENT_TITLES = {
+  ceo: "CEO",
+  strategist: "Strategist (LLM)",
+  quant: "Quant (LLM)",
+  risk: "Risk (Rust)",
+  exec: "Exec (Rust)",
+};
+
+function flagOn(v) {
+  return v ? "on" : "off";
+}
+
+function agentCopy(agentId) {
+  const a = state.agents ?? {};
+  const p = state.policy ?? a.policy ?? {};
+  const pick = state.top20?.rows?.[0];
+  const orders = state.blotter?.orders ?? [];
+  const hist = a.decide_hist ?? {};
+  const killed = isKilled();
+  const spy = state.snap?.under_price;
+  switch (agentId) {
+    case "ceo":
+      return {
+        pad: [
+          "Seat: posture only. Does not emit tickets.",
+          `kernel: ${killed ? "KILLED — no new tickets" : "armed"}`,
+          `paper: ${flagOn(a.paper ?? true)}  claude: ${flagOn(a.claude_configured)}`,
+          `SPY last ${fmt(spy, 2)}  source ${state.snap?.source ?? "—"}`,
+          `names focused ${state.focused} — lean only, never submit`,
+        ].join("\n"),
+        board: [
+          `snapshot ${state.snap?.snapshot_id ?? "—"}`,
+          `n_contracts ${state.snap?.n_contracts ?? "—"}`,
+          `universe ${state.universe?.n ?? state.universe?.rows?.length ?? 0}`,
+          `decide_ms n=${hist.n ?? 0} sum=${hist.sum_ms ?? 0}`,
+        ].join("\n"),
+        audit: killed
+          ? "KILL engaged — kernel refuses Broker::submit until restart"
+          : `live · overlay clock running · names desk ${state.focused}`,
+      };
+    case "strategist":
+      return {
+        pad: [
+          `LLM_STRATEGIST=${flagOn(a.llm_strategist)}  claude=${flagOn(a.claude_configured)}`,
+          "Slow clock only. Never on the tick path. Never computes Greeks/IV/size.",
+          a.llm_strategist && a.claude_configured
+            ? `last-good policy_id=${p.policy_id ?? "—"} regime=${p.regime ?? "unknown"}`
+            : "flag off or no key → file-default policy, last-good held",
+          p.reason ? `reason (log-only): ${p.reason}` : "reason: file-default",
+        ].join("\n"),
+        board: JSON.stringify(
+          {
+            policy_id: p.policy_id,
+            regime: p.regime,
+            dte: [p.dte_min, p.dte_max],
+            put_delta: [p.delta_min, p.delta_max],
+            lambda_eff: p.lambda_eff,
+            max_premium_cents: p.max_premium_cents,
+          },
+          null,
+          2,
+        ),
+        audit: "emit_policy bound to snapshot+policy. fail-closed: bad JSON does not overwrite last-good.",
+      };
+    case "quant": {
+      const n = state.top20?.rows?.length ?? 0;
+      return {
+        pad: [
+          `LLM_QUANT=${flagOn(a.llm_quant)}  (default off until bit-7 vectors green)`,
+          `funnel top20 n=${n}`,
+          pick
+            ? `head ${pick.contract?.occ}  Δ=${fmt(pick.greeks?.delta, 3)}  U=${fmt(pick.utility, 4)}`
+            : "funnel empty — no ticket",
+          "emit_ticket only on band breach. qty/limit recomputed by kernel (V5).",
+        ].join("\n"),
+        board: pick
+          ? JSON.stringify(
+              {
+                occ: pick.contract?.occ,
+                dte: pick.contract?.dte,
+                strike: pick.contract?.strike,
+                delta: pick.greeks?.delta,
+                utility: pick.utility,
+              },
+              null,
+              2,
+            )
+          : "no top-of-funnel row",
+        audit:
+          orders.length > 0
+            ? `last blotter ${orders[orders.length - 1].occ} ${orders[orders.length - 1].state}`
+            : "no emit_ticket this session — waiting for $Δ band or HEDGE",
+      };
     }
-  } else if (agentId === "risk") {
-    pad = "[Deterministic Rust Code]";
-    board = "Limits: 1% pos, 5% daily.";
-  } else if (agentId === "ceo") {
-    pad = "Watching PnL.";
-    board = "Appetite: moderate.";
+    case "risk":
+      return {
+        pad: [
+          "Deterministic Rust gate. Fail closed.",
+          `killed=${killed}  rth_only=${flagOn(a.rth_only)}  paper=${flagOn(a.paper ?? true)}`,
+          "stale data / bad JSON / id mismatch → no new ticket",
+          "side v1 BUY overlay only. qty u32. money i64 cents.",
+        ].join("\n"),
+        board: JSON.stringify(
+          {
+            inhibit: killed,
+            llm_strategist: a.llm_strategist,
+            llm_quant: a.llm_quant,
+            llm_names: a.llm_names,
+            paper: a.paper,
+            rth_only: a.rth_only,
+          },
+          null,
+          2,
+        ),
+        audit: "gate before send. audit append before Broker::submit. names lean cannot reach EMS.",
+      };
+    case "exec": {
+      const last = orders[orders.length - 1];
+      return {
+        pad: [
+          "EMS: Alpaca paper. Nothing calls Broker::submit except post-gate.",
+          `blotter rows=${state.blotter?.rows ?? orders.length}`,
+          last
+            ? `last ${last.client_order_id?.slice(0, 12)}… ${last.occ} qty ${last.qty} ${last.state}`
+            : "idle — no paper order this process",
+        ].join("\n"),
+        board: orders.length
+          ? orders
+              .slice(-5)
+              .map((o) => `${o.state} ${o.occ} x${o.qty} ${o.client_order_id?.slice(0, 10)}`)
+              .join("\n")
+          : "empty blotter",
+        audit: last
+          ? `client_order_id=${last.client_order_id}\nstate=${last.state} occ=${last.occ}`
+          : "no submit. press HEDGE on chrome to run gate→paper (SPY put overlay only).",
+      };
+    }
+    default:
+      return { pad: "unknown seat", board: "—", audit: "—" };
   }
-  
+}
+
+function updateAgentMemory(agentId) {
+  set("mem-title", AGENT_TITLES[agentId] || agentId);
+  const { pad, board, audit } = agentCopy(agentId);
   set("mem-pad", pad);
   set("mem-board", board);
   set("mem-audit", audit);
 }
 
-document.querySelectorAll(".node").forEach(n => {
-  n.addEventListener("click", (e) => {
-    document.querySelectorAll(".node").forEach(nn => nn.classList.remove("active"));
-    n.classList.add("active");
-    window._activeAgent = n.dataset.agent;
-    updateAgentMemory(window._activeAgent);
+function selectAgent(id) {
+  window._activeAgent = id;
+  document.querySelectorAll(".node").forEach((n) => {
+    n.classList.toggle("active", n.dataset.agent === id);
   });
+  updateAgentMemory(id);
+}
+
+function paintAgentNodes() {
+  const a = state.agents ?? {};
+  const orders = state.blotter?.orders ?? [];
+  const hot = {
+    ceo: true,
+    strategist: Boolean(a.llm_strategist && a.claude_configured),
+    quant: Boolean((state.top20?.rows ?? []).length),
+    risk: true,
+    exec: orders.length > 0,
+  };
+  document.querySelectorAll(".node").forEach((n) => {
+    n.classList.toggle("hot", Boolean(hot[n.dataset.agent]));
+  });
+}
+
+document.querySelectorAll(".node").forEach((n) => {
+  n.addEventListener("click", () => selectAgent(n.dataset.agent));
 });
 
-
-
 /* ---------- Canvas Graph Animation ---------- */
-const canvas = document.getElementById("agent-canvas");
-const ctx = canvas ? canvas.getContext("2d") : null;
-let animFrame;
+const agentCanvas = document.getElementById("agent-canvas");
+const agentCtx = agentCanvas ? agentCanvas.getContext("2d") : null;
+let animFrame = null;
 let dashOffset = 0;
 
+function stopAgentGraph() {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  animFrame = null;
+}
+
+function startAgentGraph() {
+  afterLayout(() => {
+    if (currentRoute() !== "agents") return;
+    if (!animFrame) drawAgentGraph();
+  });
+}
+
 function drawAgentGraph() {
-  if (!canvas || !ctx) return;
-  const container = canvas.parentElement;
-  canvas.width = container.clientWidth;
-  canvas.height = container.clientHeight;
-  
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
+  if (currentRoute() !== "agents" || !agentCanvas || !agentCtx) {
+    animFrame = null;
+    return;
+  }
+  const container = agentCanvas.parentElement;
+  const w = Math.max(container?.clientWidth || 0, 240);
+  const h = Math.max(container?.clientHeight || 0, 180);
+  agentCanvas.width = w;
+  agentCanvas.height = h;
+  agentCtx.clearRect(0, 0, w, h);
+
   const nodes = {};
-  document.querySelectorAll(".node").forEach(n => {
+  document.querySelectorAll(".node").forEach((n) => {
     nodes[n.dataset.agent] = {
       x: n.offsetLeft + n.offsetWidth / 2,
-      y: n.offsetTop + n.offsetHeight / 2
+      y: n.offsetTop + n.offsetHeight / 2,
     };
   });
-  
+
   const edges = [
     ["ceo", "strategist"],
     ["ceo", "quant"],
     ["strategist", "risk"],
     ["quant", "risk"],
-    ["risk", "exec"]
+    ["risk", "exec"],
   ];
-  
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = "rgba(255, 159, 28, 0.5)";
-  ctx.shadowColor = "#ff9f1c";
-  ctx.shadowBlur = 10;
-  ctx.setLineDash([10, 10]);
-  ctx.lineDashOffset = -dashOffset;
-  
+
+  agentCtx.lineWidth = 2;
+  agentCtx.strokeStyle = "rgba(255, 159, 28, 0.5)";
+  agentCtx.shadowColor = "#ff9f1c";
+  agentCtx.shadowBlur = 10;
+  agentCtx.setLineDash([10, 10]);
+  agentCtx.lineDashOffset = -dashOffset;
+
   edges.forEach(([u, v]) => {
     if (nodes[u] && nodes[v]) {
-      ctx.beginPath();
-      ctx.moveTo(nodes[u].x, nodes[u].y);
-      ctx.lineTo(nodes[v].x, nodes[v].y);
-      ctx.stroke();
+      agentCtx.beginPath();
+      agentCtx.moveTo(nodes[u].x, nodes[u].y);
+      agentCtx.lineTo(nodes[v].x, nodes[v].y);
+      agentCtx.stroke();
     }
   });
-  
+
   dashOffset += 0.5;
   animFrame = requestAnimationFrame(drawAgentGraph);
 }
-
-// Start animation when Agents tab is clicked
-document.querySelectorAll(".tabs a").forEach(a => {
-  a.addEventListener("click", (e) => {
-    if (e.target.hash === "#agents" || e.currentTarget.hash === "#agents") {
-      if (!animFrame) drawAgentGraph();
-    } else {
-      if (animFrame) cancelAnimationFrame(animFrame);
-      animFrame = null;
-    }
-  });
-});
 
